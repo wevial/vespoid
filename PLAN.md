@@ -2,7 +2,22 @@
 
 ## Changes from Previous
 
-This revision addresses 2 remaining issues found during a final review of the plan, plus 17 fixes from the previous cycle:
+This revision addresses 2 remaining issues found during a final review of the plan, plus 17 fixes from the previous cycle. An additional round of review (Round 3) found and fixed 34 more issues including:
+
+1. **CRITICAL FIX (next.config.ts)**: Changed `import { defineConfig } from "next/config"` (nonexistent API) to `import type { NextConfig } from "next"` with typed const export — this was a build-breaker.
+2. **FIX (listActiveJobs unbounded)**: Changed `.collect()` to `.take(2000)` to prevent Convex's 8,192-document query cap.
+3. **FIX (HN thread search title)**: Rewrote `findHiringThread()` to search for the actual HN format `"Ask HN: Who is hiring? (May 2026)"` and validate by author, tags, and month.
+4. **FIX (cron URL security)**: Replaced plaintext `CONVEX_URL` in cron prompts with `$CONVEX_URL` env var reference.
+5. **FIX (checkHnStale)**: Added 10s timeout via `AbortController`, status code check for HTTP errors, and `[dead]`/`[deleted]` pattern matching.
+6. **FIX (check-stale HN optimization)**: HN jobs no longer open a Playwright browser page — uses plain `fetch()` directly.
+7. **FIX (source field type)**: Schema, `upsertJob` args, and `listJobs` filter now use `v.union(v.literal("hn"), v.literal("wellfound"))` instead of `v.string()`.
+8. **FIX (staleIds type)**: Changed from `string[]` to `Id<"jobs">[]` with proper import.
+9. **FIX (Wellfound security)**: Removed `--disable-web-security` and `--disable-features=IsolateOrigins` from Chromium launch args.
+10. **FIX (Wellfound pagination)**: Added infinite-scroll loop to load beyond the first page of listings.
+11. **FIX (import.meta.url check)**: Replaced fragile `import.meta.url.endsWith(path.resolve(...))` with `Bun.main === import.meta.path`.
+12. **FIX (scripts/ dir)**: Added `mkdir -p scripts` step and execution table entry.
+13. **FIX (convex/auth.config.ts)**: Added actual file content (empty providers array).
+14. **FIX (ordering table)**: Step 4 dependency corrected to "Steps 2-3 (convex dev must be running)".
 
 1. **BUG FIX (company regex missing `- ` separator)**: The company extraction regex at line 660 only matched `|` and `(` as company/title separators, but not ` - ` (dash-space). For postings like "Acme Corp - Senior Engineer | Remote", the regex matched the `|` and captured "Acme Corp - Senior Engineer" as the company (including the job title). The fallback dash-split path was never reached because the regex matched first. Fixed: changed regex from `/^([^|(]+?)\s*(?:[|(])/` to `/^([^|(]+?)\s*(?:[|(]|- )/` so ` - ` is recognized as a company/title boundary.
 
@@ -61,6 +76,7 @@ bun create next-app . --ts --tailwind --eslint --app --src-dir --no-import-alias
 bun add convex
 bun add -d @playwright/test
 bun add -d @types/bun
+bun add -d @types/jsdom
 bunx playwright install chromium  # headless browser for scrapers
 
 # For HN scraper (lightweight HTML parsing)
@@ -75,6 +91,13 @@ bun add jsdom
 - `convex/` — Convex backend (schema, queries, mutations)
 - `convex/schema.ts` — table definitions
 - `convex/auth.config.ts` — empty (no auth for single-user)
+
+### `convex/auth.config.ts`
+```ts
+export default {
+  providers: [],
+};
+```
 
 ### Convex init
 ```bash
@@ -94,9 +117,11 @@ convex.json
 ### `next.config.ts`
 Convex requires a proxy configuration so Next.js can forward API calls during dev:
 ```ts
-import { defineConfig } from "next/config";
+import type { NextConfig } from "next";
 
-export default defineConfig({});
+const nextConfig: NextConfig = {};
+
+export default nextConfig;
 ```
 (This file is auto-created by `bun create next-app`; no special Convex config needed — `bunx convex dev` handles the proxy. Ensure your `.env.local` has `NEXT_PUBLIC_CONVEX_URL` set.)
 
@@ -118,7 +143,7 @@ export default defineSchema({
     url: v.string(),              // unique listing URL
     title: v.string(),
     company: v.string(),
-    source: v.string(),           // "hn", "wellfound", "linkedin", etc.
+    source: v.union(v.literal("hn"), v.literal("wellfound")),           // "hn", "wellfound"
     description: v.optional(v.string()),
     salaryRange: v.optional(v.string()),
     location: v.optional(v.string()),
@@ -181,9 +206,9 @@ import { v } from "convex/values";
 export const upsertJob = mutation({
   args: {
     url: v.string(),
+    source: v.union(v.literal("hn"), v.literal("wellfound")),
     title: v.string(),
     company: v.string(),
-    source: v.string(),
     description: v.optional(v.string()),
     salaryRange: v.optional(v.string()),
     location: v.optional(v.string()),
@@ -340,7 +365,7 @@ import { query } from "./_generated/server";
 
 export const listJobs = query({
   args: {
-    source: v.optional(v.string()),
+    source: v.optional(v.union(v.literal("hn"), v.literal("wellfound"))),
     status: v.optional(
       v.union(
         v.literal("saved"),
@@ -428,7 +453,7 @@ export const listActiveJobs = query({
       .query("jobs")
       .withIndex("by_active", (q) => q.eq("isActive", true))
       .order("desc")
-      .collect();
+      .take(2000);
   },
 });
 
@@ -636,21 +661,35 @@ function stripHtml(html: string): string {
 const MONTHS = ["January","February","March","April","May","June",
   "July","August","September","October","November","December"];
 
+// Search for "Ask HN: Who is hiring?" — actual HN format is "Ask HN: Who is hiring? (May 2026)"
 async function findHiringThread(): Promise<string> {
   const now = new Date();
-  // Try current month, then previous month
-  for (const offset of [0, -1]) {
-    const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-    const searchTitle = `${MONTHS[d.getMonth()]} ${d.getFullYear()} Who is hiring?`;
 
-    const searchRes = await fetch(
-      `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchTitle)}&tags=story&hitsPerPage=1`
-    );
-    const searchData = await searchRes.json() as any;
-    if (searchData.hits?.[0]?.objectID) {
-      return searchData.hits[0].objectID;
-    }
+  // Search for the canonical thread title and validate by month
+  const searchRes = await fetch(
+    `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent('"Ask HN" "Who is hiring?"')}&tags=story&hitsPerPage=50`
+  );
+  const searchData = await searchRes.json() as any;
+
+  // Filter results to current/previous month
+  for (const monthOffset of [0, -1]) {
+    const d = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const targetMonth = d.getMonth();
+    const targetYear = d.getFullYear();
+
+    const thread = searchData.hits?.find((h: any) => {
+      const createdAt = new Date(h.created_at);
+      return (
+        h.author === "whoishiring" &&
+        h._tags?.includes("story") &&
+        createdAt.getMonth() === targetMonth &&
+        createdAt.getFullYear() === targetYear
+      );
+    });
+
+    if (thread?.objectID) return thread.objectID;
   }
+
   throw new Error("Could not find hiring thread for current or previous month");
 }
 
@@ -735,9 +774,9 @@ async function scrapeHN(): Promise<JobListing[]> {
   return jobs;
 }
 
-// Direct execution check — works with bun ESM
+// Direct execution check — use Bun-native API for reliability
 import path from "path";
-if (import.meta.url.endsWith(path.resolve(process.argv[1]))) {
+if (Bun.main === import.meta.path) {
   scrapeHN()
     .then((jobs) => console.log(JSON.stringify({ source: "hn", jobs })))
     .catch((err) => {
@@ -849,8 +888,6 @@ async function scrapeWellfound() {
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process',
     ],
   });
 
@@ -876,6 +913,14 @@ async function scrapeWellfound() {
       waitUntil: "networkidle",
       timeout: 30000,
     });
+
+    // Scroll to load infinite-scroll listings
+    for (let i = 0; i < 5; i++) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(2000);
+    }
+    // Wait a final beat for any lazy-loaded content
+    await page.waitForTimeout(1000);
 
     // --- IMPORTANT: Wellfound may present a sign-in wall ---
     // If the page redirects to /login or shows a signin modal, the scraper
@@ -931,9 +976,9 @@ async function scrapeWellfound() {
   }
 }
 
-// Direct execution check — works with bun ESM
+// Direct execution check — use Bun-native API for reliability
 import path from "path";
-if (import.meta.url.endsWith(path.resolve(process.argv[1]))) {
+if (Bun.main === import.meta.path) {
   scrapeWellfound()
     .then((jobs) => console.log(JSON.stringify({ source: "wellfound", jobs })))
     .catch((err) => {
@@ -1047,6 +1092,7 @@ for (const job of filteredJobs) {
 import { chromium } from "@playwright/test";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api.js";
+import type { Id } from "../convex/_generated/dataModel.js";
 
 const CONVEX_URL = process.env.CONVEX_URL;
 if (!CONVEX_URL) {
@@ -1058,10 +1104,17 @@ const client = new ConvexHttpClient(CONVEX_URL);
 const CONCURRENCY = 5;  // Check up to 5 URLs in parallel
 
 async function checkHnStale(url: string): Promise<boolean> {
-  // HN pages never 404 — use plain HTTP fetch (no browser overhead)
-  const res = await fetch(url);
-  const body = await res.text();
-  return /position filled|no longer accepting|this job has been filled/i.test(body);
+  // HN comment pages — fetch with timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return true; // 404, 500 → stale
+    const body = await res.text();
+    return /position filled|no longer accepting|this job has been filled|\[dead\]|\[deleted\]/i.test(body);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function checkUrlStale(url: string, source: string, page: import("@playwright/test").Page): Promise<boolean> {
@@ -1084,7 +1137,7 @@ async function checkStale() {
   const jobs = await client.query(api.jobs.listActiveJobs);
 
   const browser = await chromium.launch({ headless: true });
-  const staleIds: string[] = [];
+  const staleIds: Id<"jobs">[] = [];
   const errors: string[] = [];
 
   try {
@@ -1093,6 +1146,14 @@ async function checkStale() {
       const batch = jobs.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (job) => {
+          // HN stale checks use plain fetch — no browser page needed
+          if (job.source === "hn") {
+            if (await checkHnStale(job.url)) {
+              staleIds.push(job._id);
+              console.log(`STALE: ${job.title} @ ${job.company} — ${job.url}`);
+            }
+            return;
+          }
           const page = await browser.newPage();
           try {
             if (await checkUrlStale(job.url, job.source, page)) {
@@ -1152,14 +1213,14 @@ checkStale().catch(console.error);
 
 ## Step 11: Hermes Cron Setup
 
-### Scraper cron (every 2-3 days)
+### Scraper cron (every 2-3 days, staggered)
 
 ```bash
 # Run HN scraper — pipe through ingest to upsert into Convex
-cd /root/vespoid && CONVEX_URL="$CONVEX_URL" bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts
+cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts
 
 # Run Wellfound scraper
-cd /root/vespoid && CONVEX_URL="$CONVEX_URL" bun run scripts/scrape-wellfound.ts | bun run scripts/ingest.ts
+cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/scrape-wellfound.ts | bun run scripts/ingest.ts
 ```
 
 Hermes cron command (run from this session):
@@ -1168,7 +1229,7 @@ cronjob(
   action="create",
   name="vespoid-scrape-hn",
   schedule="0 14 */2 * *",  # every 2 days at 14:00 UTC (7am PT / 6am PT DST)
-  prompt="Run the Vespoid HN scraper: cd /root/vespoid && CONVEX_URL=https://<deployment>.convex.cloud bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts. Report how many jobs were found, upserted, and any skipped. If the scraper errors, report the error message.",
+  prompt="Run the Vespoid HN scraper: cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts. Report how many jobs were found, upserted, and any skipped. If the scraper errors, report the error message.",
   workdir="/root/vespoid",
 )
 ```
@@ -1180,7 +1241,7 @@ cronjob(
   action="create",
   name="vespoid-stale-check",
   schedule="0 14 * * 1",  # every Monday at 14:00 UTC
-  prompt="Run the Vespoid stale detection script: cd /root/vespoid && CONVEX_URL=https://<deployment>.convex.cloud bun run scripts/check-stale.ts. Report how many jobs were checked, how many were marked stale, and any errors encountered.",
+  prompt="Run the Vespoid stale detection script: cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/check-stale.ts. Report how many jobs were checked, how many were marked stale, and any errors encountered.",
   workdir="/root/vespoid",
 )
 ```
@@ -1225,13 +1286,14 @@ Contains the deployment URL. Already in `.gitignore`.
 | 1 | `bun create next-app` + `bun add convex playwright @types/bun jsdom` + `bunx playwright install chromium` | Repo cloned | 2 min |
 | 2 | Write `.gitignore` + `convex/schema.ts` | Step 1 | 5 min |
 | 3 | **Start `bunx convex dev` (keep running in background)** | Step 1 | 1 min |
-| 4 | Run `bunx convex codegen` | Step 2 | 1 min |
+| 4 | Run `bunx convex codegen` | Steps 2-3 (`bunx convex dev` must be running) | 1 min |
 | 5 | Write `convex/jobs.ts` (queries + mutations) + `convex/applications.ts` | Step 2 | 15 min |
 | 6 | Run `bunx convex codegen` again | Step 5 | 1 min |
 | 7 | Write frontend: providers + layout + pages | Steps 5-6 | 20 min |
 | 8 | Write `scripts/scrape-hn.ts` | Step 1 | 10 min |
 | 9 | Write `scripts/scrape-wellfound.ts` | Step 1 | 15 min |
 | 10 | Write `scripts/ingest.ts` | Steps 5-6 | 5 min |
+| 10b | Create `scripts/` dir (`mkdir -p scripts`) if not present | Step 1 | <1 min |
 | 11 | Write `scripts/check-stale.ts` | Steps 5-6 | 10 min |
 | 12 | **Test scrapers + Convex mutations** (requires `bunx convex dev` running) | Steps 5-11 | 15 min |
 | 13 | Set up Hermes cron jobs | Step 12 | 5 min |
