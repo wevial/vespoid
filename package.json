@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "bun test",
     "scrape:hn": "bun run scripts/scrape-hn.ts",
     "scrape:wellfound": "bun run scripts/scrape-wellfound.ts",
     "ingest": "bun run scripts/ingest.ts",

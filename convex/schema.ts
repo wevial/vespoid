@@ -23,6 +23,8 @@ export default defineSchema({
     salaryRange: v.optional(v.string()),
     location: v.optional(v.string()),
     remoteStatus: v.optional(v.string()),
+    fitScore: v.optional(v.number()),
+    fitReasons: v.optional(v.array(v.string())),
     postedAt: v.optional(v.string()),
     discoveredAt: v.string(),
     isActive: v.boolean(),

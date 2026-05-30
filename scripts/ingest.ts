@@ -61,6 +61,8 @@ interface IngestJob {
   salaryRange?: string;
   location?: string;
   remoteStatus?: string;
+  fitScore?: number;
+  fitReasons?: string[];
   postedAt?: string;
   [key: string]: unknown;
 }
@@ -79,6 +81,8 @@ function isIngestJob(job: RawJob): job is IngestJob {
     (job.salaryRange === undefined || typeof job.salaryRange === "string") &&
     (job.location === undefined || typeof job.location === "string") &&
     (job.remoteStatus === undefined || typeof job.remoteStatus === "string") &&
+    (job.fitScore === undefined || typeof job.fitScore === "number") &&
+    (job.fitReasons === undefined || (Array.isArray(job.fitReasons) && job.fitReasons.every((reason) => typeof reason === "string"))) &&
     (job.postedAt === undefined || typeof job.postedAt === "string")
   );
 }

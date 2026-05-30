@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import { classifyJobFit } from "../src/lib/job-fit";
 
 export interface JobListing {
   url: string;
@@ -9,6 +10,8 @@ export interface JobListing {
   salaryRange?: string;
   location?: string;
   remoteStatus?: string;
+  fitScore?: number;
+  fitReasons?: string[];
   postedAt: string;
 }
 
@@ -70,7 +73,23 @@ async function findHiringThread(): Promise<string> {
   throw new Error(`Could not find current or previous month HN Who's Hiring thread (${MONTHS[now.getMonth()]} ${now.getFullYear()})`);
 }
 
-function extractJobInfo(firstLine: string, text: string, author: string): Omit<JobListing, "source" | "postedAt" | "url"> & { url?: string } {
+function isEmploymentSegment(value: string): boolean {
+  return /^(full[-\s]?time|part[-\s]?time|contract|contractor|internship|temporary|permanent|visa|sponsorship|no visa|remote only)$/i.test(value.trim());
+}
+
+function isRoleSegment(value: string): boolean {
+  return /\b(engineer|developer|full[-\s]?stack|frontend|front[-\s]?end|backend|product|platform|infrastructure|devops|sre|technical lead|architect)\b/i.test(value);
+}
+
+function isLocationSegment(value: string): boolean {
+  return /\b(remote|san francisco|sf\b|bay area|seattle|denver|boulder|new york|nyc|austin|berlin|london|paris|palo alto|sunnyvale|mountain view|[A-Z]{2}\b|usa|us|canada|europe|emea|latam)\b/i.test(value);
+}
+
+function isUrlSegment(value: string): boolean {
+  return /^https?:\/\//i.test(value) || /\.[a-z]{2,}(?:\/|$)/i.test(value);
+}
+
+export function extractJobInfo(firstLine: string, text: string, author: string): Omit<JobListing, "source" | "postedAt" | "url"> & { url?: string } {
   const cleanLine = decodeHtml(firstLine.replace(/<[^>]*>/g, ""));
   let company: string;
   let titleSegment: string;
@@ -91,23 +110,36 @@ function extractJobInfo(firstLine: string, text: string, author: string): Omit<J
   }
 
   if (!company) company = author;
-  const titleParts = titleSegment.split(/[|(]/);
-  const title = (titleParts[0]?.trim() || cleanLine || "Untitled role").slice(0, 200).trim();
+  const titleParts = (pipeSplit.length >= 2 ? pipeSplit.slice(1) : titleSegment.split(/[()]/)).map((part) => part.trim()).filter(Boolean);
 
   let location: string | undefined;
   let remoteStatus: string | undefined;
   let salaryRange: string | undefined;
+  let title: string | undefined;
+  let fallbackTitle: string | undefined;
 
-  for (const part of titleParts.slice(1)) {
+  for (const part of titleParts) {
     const trimmed = part.replace(/\)+$/, "").trim();
+    if (isEmploymentSegment(trimmed)) {
+      continue;
+    }
+    if (isUrlSegment(trimmed)) {
+      continue;
+    }
     if (/remote|hybrid|onsite|in[-\s]?office/i.test(trimmed)) {
       remoteStatus = trimmed.toLowerCase();
     } else if (/\$\d+[kK]|\$\d+,\d+|\$\d+\s*-\s*\$?\d+/i.test(trimmed)) {
       salaryRange = trimmed;
-    } else if (/^[A-Z][A-Za-z .,-]+$/.test(trimmed) && trimmed.length < 80) {
+    } else if (!location && isLocationSegment(trimmed) && trimmed.length < 100 && !isRoleSegment(trimmed)) {
       location = trimmed;
+    } else if (!title && isRoleSegment(trimmed)) {
+      title = trimmed;
+    } else if (!fallbackTitle && trimmed.length < 140) {
+      fallbackTitle = trimmed;
     }
   }
+
+  title = (title ?? fallbackTitle ?? cleanLine ?? "Untitled role").slice(0, 200).trim();
 
   const hrefMatch = text.match(/href="(https:\/\/(?!news\.ycombinator\.com)[^"]+)"/i);
   const url = hrefMatch ? decodeHtml(hrefMatch[1]) : undefined;
@@ -117,7 +149,13 @@ function extractJobInfo(firstLine: string, text: string, author: string): Omit<J
 
 export function filterJobs(jobs: JobListing[]): JobListing[] {
   const excludePatterns = /robert half|teksystems|kforce|randstad|staffing|recruiting|aquent/i;
-  return jobs.filter((job) => !excludePatterns.test(job.company));
+  return jobs
+    .map((job) => {
+      const fit = classifyJobFit(job);
+      return { ...job, fitScore: fit.score, fitReasons: fit.reasons };
+    })
+    .filter((job) => !excludePatterns.test(job.company) && classifyJobFit(job).isRelevant)
+    .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
 }
 
 export async function scrapeHN(): Promise<JobListing[]> {

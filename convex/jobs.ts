@@ -57,6 +57,8 @@ export const upsertJob = mutation({
     salaryRange: v.optional(v.string()),
     location: v.optional(v.string()),
     remoteStatus: v.optional(v.string()),
+    fitScore: v.optional(v.number()),
+    fitReasons: v.optional(v.array(v.string())),
     postedAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -77,6 +79,8 @@ export const upsertJob = mutation({
         salaryRange: args.salaryRange,
         location: args.location,
         remoteStatus: args.remoteStatus,
+        fitScore: args.fitScore,
+        fitReasons: args.fitReasons,
         postedAt: args.postedAt,
         isActive: true,
         lastCheckedAt: now,
@@ -163,7 +167,7 @@ export const listJobs = query({
       );
     }
 
-    return filtered;
+    return filtered.sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
   },
 });
 

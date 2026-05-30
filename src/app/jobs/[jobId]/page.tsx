@@ -87,10 +87,20 @@ export default function JobDetailPage() {
             <div><dt className="text-xs text-fuchsia-100/45">Location</dt><dd>{job.location ?? "Unknown"}</dd></div>
             <div><dt className="text-xs text-fuchsia-100/45">Remote</dt><dd>{job.remoteStatus ?? "Unknown"}</dd></div>
             <div><dt className="text-xs text-fuchsia-100/45">Salary</dt><dd>{job.salaryRange ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-fuchsia-100/45">Fit score</dt><dd>{job.fitScore ?? "Unknown"}</dd></div>
             <div><dt className="text-xs text-fuchsia-100/45">Posted</dt><dd>{formatDate(job.postedAt)}</dd></div>
             <div><dt className="text-xs text-fuchsia-100/45">Discovered</dt><dd>{formatDate(job.discoveredAt)}</dd></div>
-            <div><dt className="text-xs text-fuchsia-100/45">Last checked</dt><dd>{formatDate(job.lastCheckedAt)}</dd></div>
           </dl>
+
+          {job.fitReasons && job.fitReasons.length > 0 ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {job.fitReasons.map((reason) => (
+                <span key={reason} className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-100">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-6 whitespace-pre-wrap rounded-2xl border border-cyan-300/12 bg-black/24 p-5 text-sm leading-6 text-fuchsia-100/78">
             {job.description ?? "No description captured."}

@@ -78,7 +78,13 @@ export default function JobsPage() {
           <div className="neon-divider divide-y divide-white/10">
             {jobs.map((job) => (
               <Link key={job._id} href={`/jobs/${job._id}`} className="neon-row grid grid-cols-12 gap-3 px-4 py-4 text-sm">
-                <span className="col-span-5"><strong className="block text-fuchsia-50">{job.title}</strong><span className="text-fuchsia-100/58">{job.company} · {job.location ?? "Unknown"}</span></span>
+                <span className="col-span-5">
+                  <strong className="block text-fuchsia-50">{job.title}</strong>
+                  <span className="text-fuchsia-100/58">{job.company} · {job.location ?? "Unknown"}</span>
+                  {job.fitReasons && job.fitReasons.length > 0 ? (
+                    <span className="mt-1 block text-xs text-cyan-100/62">Fit {job.fitScore ?? "—"}: {job.fitReasons.slice(0, 3).join(" · ")}</span>
+                  ) : null}
+                </span>
                 <span className="col-span-2 text-cyan-100/78">{SOURCE_LABELS[job.source] ?? job.source}</span>
                 <span className="col-span-2 text-cyan-100/78">{job.remoteStatus ?? "—"}</span>
                 <span className="col-span-2 text-fuchsia-100/58">{formatDate(job.discoveredAt)}</span>
