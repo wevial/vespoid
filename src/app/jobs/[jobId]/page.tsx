@@ -38,11 +38,11 @@ export default function JobDetailPage() {
   }, [jobId]);
 
   if (data === undefined) {
-    return <main className="mx-auto max-w-6xl p-8 text-slate-400">Loading listing…</main>;
+    return <main className="vespoid-shell mx-auto max-w-6xl p-8 text-fuchsia-100/62">Loading listing…</main>;
   }
 
   if (data === null) {
-    return <main className="mx-auto max-w-6xl p-8"><Link className="text-blue-300" href="/jobs">← Jobs</Link><p className="mt-6 text-slate-400">Job not found.</p></main>;
+    return <main className="vespoid-shell mx-auto max-w-6xl p-8"><Link className="text-cyan-200 hover:text-fuchsia-200" href="/jobs">← Jobs</Link><p className="mt-6 text-fuchsia-100/62">Job not found.</p></main>;
   }
 
   const { job, application } = data;
@@ -70,58 +70,58 @@ export default function JobDetailPage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
-      <Link className="text-sm text-blue-300 hover:text-blue-200" href="/jobs">← Back to jobs</Link>
+    <main className="vespoid-shell mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
+      <Link className="text-sm text-cyan-200 hover:text-fuchsia-200" href="/jobs">← Back to jobs</Link>
       <section className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <article className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <article className="neon-panel neon-panel-hot rounded-2xl p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-sm uppercase tracking-[0.25em] text-blue-300">{job.source}</p>
-              <h1 className="mt-2 text-3xl font-semibold">{job.title}</h1>
-              <p className="mt-2 text-lg text-slate-300">{job.company}</p>
+              <p className="neon-eyebrow text-sm uppercase tracking-[0.25em]">{job.source}</p>
+              <h1 className="neon-heading mt-2 text-3xl font-semibold">{job.title}</h1>
+              <p className="mt-2 text-lg text-fuchsia-100/78">{job.company}</p>
             </div>
-            <a href={job.url} target="_blank" rel="noopener noreferrer" className="rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-400">Open listing ↗</a>
+            <a href={job.url} target="_blank" rel="noopener noreferrer" className="neon-button rounded-full px-4 py-2 text-sm font-semibold">Open listing ↗</a>
           </div>
 
-          <dl className="mt-6 grid gap-4 rounded-2xl border border-white/10 bg-slate-950/60 p-4 md:grid-cols-3">
-            <div><dt className="text-xs text-slate-500">Location</dt><dd>{job.location ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-slate-500">Remote</dt><dd>{job.remoteStatus ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-slate-500">Salary</dt><dd>{job.salaryRange ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-slate-500">Posted</dt><dd>{formatDate(job.postedAt)}</dd></div>
-            <div><dt className="text-xs text-slate-500">Discovered</dt><dd>{formatDate(job.discoveredAt)}</dd></div>
-            <div><dt className="text-xs text-slate-500">Last checked</dt><dd>{formatDate(job.lastCheckedAt)}</dd></div>
+          <dl className="mt-6 grid gap-4 rounded-2xl border border-cyan-300/12 bg-black/24 p-4 md:grid-cols-3">
+            <div><dt className="text-xs text-fuchsia-100/45">Location</dt><dd>{job.location ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-fuchsia-100/45">Remote</dt><dd>{job.remoteStatus ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-fuchsia-100/45">Salary</dt><dd>{job.salaryRange ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-fuchsia-100/45">Posted</dt><dd>{formatDate(job.postedAt)}</dd></div>
+            <div><dt className="text-xs text-fuchsia-100/45">Discovered</dt><dd>{formatDate(job.discoveredAt)}</dd></div>
+            <div><dt className="text-xs text-fuchsia-100/45">Last checked</dt><dd>{formatDate(job.lastCheckedAt)}</dd></div>
           </dl>
 
-          <div className="mt-6 whitespace-pre-wrap rounded-2xl border border-white/10 bg-slate-950/60 p-5 text-sm leading-6 text-slate-300">
+          <div className="mt-6 whitespace-pre-wrap rounded-2xl border border-cyan-300/12 bg-black/24 p-5 text-sm leading-6 text-fuchsia-100/78">
             {job.description ?? "No description captured."}
           </div>
         </article>
 
-        <aside className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/5 p-6">
+        <aside className="neon-panel flex flex-col gap-4 rounded-2xl p-6">
           <div>
             <h2 className="text-lg font-semibold">Pipeline status</h2>
-            <p className="mt-1 text-sm text-slate-400">Current: {application ? STATUS_LABELS[application.status] : "Unread"}</p>
+            <p className="mt-1 text-sm text-fuchsia-100/62">Current: {application ? STATUS_LABELS[application.status] : "Unread"}</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((status) => (
-              <button key={status} disabled={saving} onClick={() => changeStatus(status)} className="rounded-xl border border-white/10 px-3 py-2 text-sm hover:border-blue-400 disabled:opacity-50">
+              <button key={status} disabled={saving} onClick={() => changeStatus(status)} className="neon-ghost rounded-xl px-3 py-2 text-sm disabled:opacity-50">
                 {STATUS_LABELS[status]}
               </button>
             ))}
           </div>
-          <label className="mt-2 text-sm font-medium text-slate-300" htmlFor="notes">Notes</label>
-          <textarea id="notes" value={notes} onChange={(e) => setDraftNotes(e.target.value)} className="min-h-40 rounded-xl border border-white/10 bg-slate-950 p-3 text-sm outline-none focus:border-blue-400" placeholder="Interview prep, follow-up notes, recruiter details…" />
-          <button disabled={saving} onClick={saveNotes} className="rounded-xl bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-400 disabled:opacity-50">{saving ? "Saving…" : "Save notes"}</button>
+          <label className="mt-2 text-sm font-medium text-fuchsia-100/78" htmlFor="notes">Notes</label>
+          <textarea id="notes" value={notes} onChange={(e) => setDraftNotes(e.target.value)} className="neon-input min-h-40 rounded-xl p-3 text-sm outline-none" placeholder="Interview prep, follow-up notes, recruiter details…" />
+          <button disabled={saving} onClick={saveNotes} className="neon-button rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50">{saving ? "Saving…" : "Save notes"}</button>
         </aside>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <section className="neon-panel rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">Preview</h2>
-          <a className="text-sm text-blue-300 hover:text-blue-200" href={job.url} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
+          <a className="text-sm text-cyan-200 hover:text-fuchsia-200" href={job.url} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
         </div>
-        <iframe src={job.url} title={job.title} sandbox="allow-scripts" className="h-[640px] w-full rounded-xl border border-white/10 bg-white" />
-        <p className="mt-3 text-xs text-slate-500">Many job sites block iframe embedding. Use “Open in new tab” when the preview is blank.</p>
+        <iframe src={job.url} title={job.title} sandbox="allow-scripts" className="h-[640px] w-full rounded-xl border border-cyan-300/12 bg-white" />
+        <p className="mt-3 text-xs text-fuchsia-100/45">Many job sites block iframe embedding. Use “Open in new tab” when the preview is blank.</p>
       </section>
     </main>
   );
