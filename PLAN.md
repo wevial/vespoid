@@ -31,6 +31,17 @@ This revision addresses 2 remaining issues found during a final review of the pl
 23. **FIX (Wellfound cron)**: Added staggered `vespoid-scrape-wellfound` cron at `30 14 */2 * *` (30 min after HN) so the Wellfound scraper actually runs in production.
 24. **FIX (HN regex https only)**: `extractJobInfo` now only captures `https://` links (not `http://`), so `http://` URLs fall back to the HN permalink instead of being silently dropped by ingest's validation.
 
+25. **FIX (listJobs search+status compose)**: Made `search` filter work alongside `status` filter instead of silently dropping one — both are now applied in sequence.
+26. **FIX (unread from active jobs only)**: Changed `statusCounts` to compute `unread` from applications linked to active jobs only, not archived ones. Renamed `total` → `totalApplications` for clarity.
+27. **FIX (upsertJob URL validation)**: Added URL protocol check (`https://` only) + private IP blocklist in `upsertJob` mutation — SSRF prevention at the mutation boundary.
+28. **FIX (dead `import path`)**: Removed unused `import path from "path"` from both scraper files.
+29. **FIX (mkdir ordering)**: Moved `mkdir -p scripts` in execution table to step 7b (before script-writing steps 8-11).
+30. **FIX (checkUrlStale dead HN branch)**: Removed unreachable `if (source === "hn")` check since the caller already handles HN separately.
+31. **FIX (Chromium launch guard)**: Only launches Chromium in stale checker if non-HN jobs exist — avoids browser startup for HN-only datasets.
+32. **FIX (scaffold dotfiles)**: Changed `cp -r .../*` to `cp -rT` so hidden template files (`.gitignore`, `.eslintrc`, etc.) are copied.
+33. **FIX (extractJobInfo return type)**: Marked `url` as optional in return type to match runtime behavior (can be `undefined`).
+34. **FIX (Wellfound source literal)**: Changed `source: "wellfound"` to `source: "wellfound" as const` to preserve the literal type in `page.evaluate`.
+
 1. **BUG FIX (company regex missing `- ` separator)**: The company extraction regex at line 660 only matched `|` and `(` as company/title separators, but not ` - ` (dash-space). For postings like "Acme Corp - Senior Engineer | Remote", the regex matched the `|` and captured "Acme Corp - Senior Engineer" as the company (including the job title). The fallback dash-split path was never reached because the regex matched first. Fixed: changed regex from `/^([^|(]+?)\s*(?:[|(])/` to `/^([^|(]+?)\s*(?:[|(]|- )/` so ` - ` is recognized as a company/title boundary.
 
 2. **BUG FIX (scrape-wellfound — browser leak on error)**: `scrapeWellfound()` called `browser.close()` only at the end of the normal flow and on the auth-wall early-return path. If `page.goto()` threw (timeout, DNS failure, etc.), the function exited without closing the browser, leaking a Chrome process. Fixed: wrapped the body after `chromium.launch()` in `try { ... } finally { await browser.close().catch(() => {}); }`. Removed the now-redundant manual `browser.close()` call from the auth-wall path.
@@ -87,7 +98,7 @@ Scaffold a single-user job search tracker with Convex backend + Next.js frontend
 cd /root/vespoid
 bun create next-app . --ts --tailwind --eslint --app --src-dir --no-import-alias --use-bun 2>/dev/null || \
   (cd /tmp && bun create next-app vespoid-tmp --ts --tailwind --eslint --app --src-dir --no-import-alias --use-bun && \
-   cp -r /tmp/vespoid-tmp/* /root/vespoid/ && rm -rf /tmp/vespoid-tmp)
+   cp -rT /tmp/vespoid-tmp /root/vespoid/ && rm -rf /tmp/vespoid-tmp)
 
 # Install Convex + Playwright
 bun add convex
@@ -218,7 +229,7 @@ Run this after every schema change to regenerate `convex/_generated/`.
 
 ```ts
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 
 export const upsertJob = mutation({
   args: {
@@ -233,6 +244,21 @@ export const upsertJob = mutation({
     postedAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate URL — reject non-https or private/internal hosts (SSRF prevention)
+    let parsed: URL;
+    try {
+      parsed = new URL(args.url);
+    } catch {
+      throw new ConvexError(`Invalid URL: ${args.url}`);
+    }
+    if (parsed.protocol !== "https:") {
+      throw new ConvexError(`URL must use https: got ${parsed.protocol}`);
+    }
+    const blocklist = ["localhost", "127.0.0.1", "::1", "0.0.0.0", "169.254.", "10.", "172.16.", "192.168."];
+    if (blocklist.some((p) => parsed.hostname.startsWith(p) || parsed.hostname.includes(p))) {
+      throw new ConvexError(`URL hostname is not allowed: ${parsed.hostname}`);
+    }
+
     const existing = await ctx.db
       .query("jobs")
       .withIndex("by_url", (q) => q.eq("url", args.url))
@@ -430,16 +456,17 @@ export const listJobs = query({
 
     const jobs = await q.order("desc").take(100);
 
-    // Join with application status if filtering by status
-    // NOTE: When both status and search are set, search is dropped (status filter returns first).
-    // This is a known limitation — fix by combining both filters or making them mutually exclusive.
+    // Build a filtered list from the fetched jobs
+    let filtered = jobs;
+
+    // Filter by application status if requested
     if (args.status) {
       const apps = await ctx.db
         .query("applications")
         .withIndex("by_status", (idx) => idx.eq("status", args.status))
-        .collect();
+        .take(8192);
       const appJobIds = new Set(apps.map((a) => a.jobId));
-      return jobs.filter((j) => appJobIds.has(j._id));
+      filtered = filtered.filter((j) => appJobIds.has(j._id));
     }
 
     // Text search in title/company/description (client-side — fine for single-user with < 100 results)
@@ -447,7 +474,7 @@ export const listJobs = query({
     // beyond page 1 are missed. Acceptable for single-user with < 1000 jobs.
     if (args.search) {
       const term = args.search.toLowerCase();
-      return jobs.filter(
+      filtered = filtered.filter(
         (j) =>
           j.title.toLowerCase().includes(term) ||
           j.company.toLowerCase().includes(term) ||
@@ -455,7 +482,7 @@ export const listJobs = query({
       );
     }
 
-    return jobs;
+    return filtered;
   },
 });
 
@@ -490,19 +517,21 @@ export const statusCounts = query({
       counts[a.status] = (counts[a.status] ?? 0) + 1;
     }
 
-    // Count unique jobs that have an application
-    const appliedJobIds = new Set(apps.map((a) => a.jobId));
-
     // Count active jobs
     const activeJobs = await ctx.db
       .query("jobs")
       .withIndex("by_active", (q) => q.eq("isActive", true))
       .take(8192);
 
+    // Only consider applications linked to active jobs for the unread count
+    const activeJobIds = new Set(activeJobs.map((j) => j._id));
+    const appliedActive = apps.filter((a) => activeJobIds.has(a.jobId));
+    const appliedActiveIds = new Set(appliedActive.map((a) => a.jobId));
+
     return {
-      total: apps.length,
+      totalApplications: apps.length,
       ...counts,
-      unread: Math.max(0, activeJobs.length - appliedJobIds.size),
+      unread: Math.max(0, activeJobs.length - appliedActiveIds.size),
     };
   },
 });
@@ -718,7 +747,7 @@ async function findHiringThread(): Promise<string> {
   throw new Error("Could not find hiring thread for current or previous month");
 }
 
-function extractJobInfo(firstLine: string, text: string, author: string): Pick<JobListing, "title" | "company" | "description" | "salaryRange" | "location" | "remoteStatus" | "url"> {
+function extractJobInfo(firstLine: string, text: string, author: string): Pick<JobListing, "title" | "company" | "description" | "salaryRange" | "location" | "remoteStatus"> & { url?: string } {
   // Strip HTML from the first line for parsing
   const cleanLine = firstLine.replace(/<[^>]*>/g, "");
 
@@ -817,7 +846,6 @@ async function scrapeHN(): Promise<JobListing[]> {
 }
 
 // Direct execution check — use Bun-native API for reliability
-import path from "path";
 if (Bun.main === import.meta.path) {
   scrapeHN()
     .then((jobs) => {
@@ -1004,7 +1032,7 @@ async function scrapeWellfound() {
           url: link?.href ?? "",
           title: card.querySelector('[class*="title"]')?.textContent?.trim() ?? "",
           company: card.querySelector('[class*="company"], [class*="Company"]')?.textContent?.trim() ?? "",
-          source: "wellfound",
+          source: "wellfound" as const,
           description: card.querySelector('[class*="description"], [class*="Description"]')?.textContent?.trim() ?? "",
           salaryRange: card.querySelector('[class*="salary"], [class*="Salary"]')?.textContent?.trim(),
           location: card.querySelector('[class*="location"], [class*="Location"]')?.textContent?.trim(),
@@ -1022,7 +1050,6 @@ async function scrapeWellfound() {
 }
 
 // Direct execution check — use Bun-native API for reliability
-import path from "path";
 if (Bun.main === import.meta.path) {
   scrapeWellfound()
     .then((jobs) => console.log(JSON.stringify({ source: "wellfound", jobs })))
@@ -1152,10 +1179,7 @@ async function checkHnStale(url: string): Promise<boolean> {
 }
 
 async function checkUrlStale(url: string, source: string, page: import("@playwright/test").Page): Promise<boolean> {
-  if (source === "hn") {
-    return checkHnStale(url);
-  }
-
+  // HN stale checks are handled separately via plain fetch in the caller — this is only for non-HN jobs.
   const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
   const status = response?.status() ?? 0;
   const body = await page.textContent("body") ?? "";
@@ -1170,7 +1194,12 @@ async function checkStale() {
   // Fetch all active jobs
   const jobs = await client.query(api.jobs.listActiveJobs);
 
-  const browser = await chromium.launch({ headless: true });
+  // Only launch Chromium if there are non-HN jobs to check
+  const needsBrowser = jobs.some((j) => j.source !== "hn");
+  let browser: import("@playwright/test").Browser | undefined;
+  if (needsBrowser) {
+    browser = await chromium.launch({ headless: true });
+  }
   const staleIds: Id<"jobs">[] = [];
   const errors: string[] = [];
 
@@ -1211,7 +1240,7 @@ async function checkStale() {
       }
     }
   } finally {
-    await browser.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
   }
 
   // Batch mark all stale jobs in one mutation call
@@ -1337,10 +1366,10 @@ Contains the deployment URL. Already in `.gitignore`.
 | 5 | Write `convex/jobs.ts` (queries + mutations) + `convex/applications.ts` | Step 2 | 15 min |
 | 6 | Run `bunx convex codegen` again | Step 5 | 1 min |
 | 7 | Write frontend: providers + layout + pages | Steps 5-6 | 20 min |
+| 7b | Create `scripts/` dir (`mkdir -p scripts`) if not present | Step 1 | <1 min |
 | 8 | Write `scripts/scrape-hn.ts` | Step 1 | 10 min |
 | 9 | Write `scripts/scrape-wellfound.ts` | Step 1 | 15 min |
 | 10 | Write `scripts/ingest.ts` | Steps 5-6 | 5 min |
-| 10b | Create `scripts/` dir (`mkdir -p scripts`) if not present | Step 1 | <1 min |
 | 11 | Write `scripts/check-stale.ts` | Steps 5-6 | 10 min |
 | 12 | **Test scrapers + Convex mutations** (requires `bunx convex dev` running) | Steps 5-11 | 15 min |
 | 13 | Set up Hermes cron jobs | Step 12 | 5 min |
