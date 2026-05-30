@@ -19,6 +19,13 @@ This revision addresses 2 remaining issues found during a final review of the pl
 13. **FIX (convex/auth.config.ts)**: Added actual file content (empty providers array).
 14. **FIX (ordering table)**: Step 4 dependency corrected to "Steps 2-3 (convex dev must be running)".
 
+15. **CRITICAL FIX (cron pipe env var)**: Changed `CONVEX_URL=$CONVEX_URL bun run ...` to `export CONVEX_URL="$CONVEX_URL" && ...` — bash only scopes env vars to the left side of a pipe.
+16. **CRITICAL FIX (HN listing URLs)**: Rewrote `extractJobInfo()` to extract actual listing URLs from HN comment body instead of storing the HN comment permalink. Falls back to comment URL if no external link is found.
+17. **FIX (company regex YC names)**: Rewrote company extraction to use pipe-split first, then dash-split, with YC annotation stripping — handles `"Company (YC S21) - Role | Location"` correctly.
+18. **FIX (orphaned application records)**: `setStatus` now verifies the referenced job exists before creating an application record, throwing `ConvexError` if not found.
+19. **FIX (scaffold non-empty dir)**: `bun create next-app .` now falls back to creating in a temp dir and copying if the current dir is non-empty.
+20. **FIX (URL validation)**: Added design decision requiring `https://` scheme validation on all stored URLs to prevent SSRF and iframe injection.
+
 1. **BUG FIX (company regex missing `- ` separator)**: The company extraction regex at line 660 only matched `|` and `(` as company/title separators, but not ` - ` (dash-space). For postings like "Acme Corp - Senior Engineer | Remote", the regex matched the `|` and captured "Acme Corp - Senior Engineer" as the company (including the job title). The fallback dash-split path was never reached because the regex matched first. Fixed: changed regex from `/^([^|(]+?)\s*(?:[|(])/` to `/^([^|(]+?)\s*(?:[|(]|- )/` so ` - ` is recognized as a company/title boundary.
 
 2. **BUG FIX (scrape-wellfound — browser leak on error)**: `scrapeWellfound()` called `browser.close()` only at the end of the normal flow and on the auth-wall early-return path. If `page.goto()` threw (timeout, DNS failure, etc.), the function exited without closing the browser, leaking a Chrome process. Fixed: wrapped the body after `chromium.launch()` in `try { ... } finally { await browser.close().catch(() => {}); }`. Removed the now-redundant manual `browser.close()` call from the auth-wall path.
@@ -69,8 +76,13 @@ Scaffold a single-user job search tracker with Convex backend + Next.js frontend
 
 ```bash
 # Create the Next.js project with bun
+# NOTE: If the directory is non-empty (has existing files), you may need:
+#   bun create next-app ../vespoid-tmp --ts --tailwind --eslint --app --src-dir --no-import-alias --use-bun
+#   then copy files back, or use --force flag if available in your bun version.
 cd /root/vespoid
-bun create next-app . --ts --tailwind --eslint --app --src-dir --no-import-alias --use-bun
+bun create next-app . --ts --tailwind --eslint --app --src-dir --no-import-alias --use-bun 2>/dev/null || \
+  (cd /tmp && bun create next-app vespoid-tmp --ts --tailwind --eslint --app --src-dir --no-import-alias --use-bun && \
+   cp -r /tmp/vespoid-tmp/* /root/vespoid/ && rm -rf /tmp/vespoid-tmp)
 
 # Install Convex + Playwright
 bun add convex
@@ -277,7 +289,7 @@ export const markStaleBatch = mutation({
 
 ```ts
 import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 
 export const setStatus = mutation({
   args: {
@@ -294,6 +306,12 @@ export const setStatus = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Verify the referenced job exists to prevent orphaned records
+    const job = await ctx.db.get(args.jobId);
+    if (!job) {
+      throw new ConvexError(`Job ${args.jobId} not found — cannot create application for nonexistent job`);
+    }
+
     const existing = await ctx.db
       .query("applications")
       .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
@@ -693,26 +711,34 @@ async function findHiringThread(): Promise<string> {
   throw new Error("Could not find hiring thread for current or previous month");
 }
 
-function extractJobInfo(firstLine: string, text: string, author: string): Pick<JobListing, "title" | "company" | "description" | "salaryRange" | "location" | "remoteStatus"> {
+function extractJobInfo(firstLine: string, text: string, author: string): Pick<JobListing, "title" | "company" | "description" | "salaryRange" | "location" | "remoteStatus" | "url"> {
   // Strip HTML from the first line for parsing
   const cleanLine = firstLine.replace(/<[^>]*>/g, "");
 
   // Pattern: "Company Name - Job Title | Location | Remote | $100k-$150k"
   // Or: "Company Name | Job Title | Location"
-  // Company is the segment before the first pipe, paren, or " - " (job title separator)
-  const companyMatch = cleanLine.match(/^([^|(]+?)\s*(?:[|(]|- )/);
-  // Fallback: split on " - " if no pipe/paren found
+  // Company is the segment before the first pipe, " - ", or paren NOT preceded by "YC"/"YC "
+  // IMPORTANT: Handle "(YC S21)" style company annotations correctly
+  // Strategy: find first pipe, " - ", or parenthetical that's NOT a YC annotation
   let company: string;
   let titleSegment: string;
-  if (companyMatch) {
-    company = companyMatch[1].trim();
-    // Everything after the company separator
-    titleSegment = cleanLine.slice(companyMatch[0].length).trim();
+
+  // Try splitting on " | " first (most reliable separator)
+  const pipeSplit = cleanLine.split(" | ");
+  if (pipeSplit.length >= 2) {
+    // First segment is company — strip YC annotation from end if present
+    company = pipeSplit[0].replace(/\s*\(YC\s*\w+\)\s*$/, "").trim();
+    titleSegment = pipeSplit.slice(1).join(" | ").trim();
   } else {
-    // Try splitting on " — " or " – " (em/en dash) or " - "
-    const dashSplit = cleanLine.split(/ — | – | - /);
-    company = dashSplit[0]?.trim() ?? author;
-    titleSegment = dashSplit.slice(1).join(" — ").trim();
+    // Try " — " (em dash) or " – " (en dash) or " - " (hyphen)
+    const dashMatch = cleanLine.match(/^(.*?)\s+(?:—|–|-)\s+(.*)$/);
+    if (dashMatch) {
+      company = dashMatch[1].replace(/\s*\(YC\s*\w+\)\s*$/, "").trim();
+      titleSegment = dashMatch[2].trim();
+    } else {
+      company = author;
+      titleSegment = cleanLine;
+    }
   }
 
   if (!company || company.length === 0) {
@@ -730,7 +756,7 @@ function extractJobInfo(firstLine: string, text: string, author: string): Pick<J
 
   for (const part of titleParts.slice(1)) {
     const trimmed = part.trim();
-    if (/remote|hybrid|onsite|in[-\s]?office/i.test(trimmed)) {
+    if (/remote|hybrid|onsite|in[-\\s]?office/i.test(trimmed)) {
       remoteStatus = trimmed.toLowerCase();
     } else if (/\$\d+[kK]|\$\d+,\d+|\$\d+\s*-\s*\d+/i.test(trimmed)) {
       salaryRange = trimmed;
@@ -739,10 +765,14 @@ function extractJobInfo(firstLine: string, text: string, author: string): Pick<J
     }
   }
 
+  // Extract actual listing URL from comment body (first https link to external site)
+  const urlMatch = text.match(/href="(https?:\/\/(?!news\.ycombinator\.com)[^"]+)"/);
+  const url = urlMatch ? urlMatch[1] : undefined;
+
   // Full description: strip HTML from full text
   const description = stripHtml(text);
 
-  return { title, company, description, salaryRange, location, remoteStatus };
+  return { title, company, description, salaryRange, location, remoteStatus, url };
 }
 
 async function scrapeHN(): Promise<JobListing[]> {
@@ -763,8 +793,11 @@ async function scrapeHN(): Promise<JobListing[]> {
 
       const info = extractJobInfo(firstLine, text, c.author);
 
+      // Use the actual listing URL if found, fall back to HN comment permalink
+      const listingUrl = info.url ?? `https://news.ycombinator.com/item?id=${c.id}`;
+
       return {
-        url: `https://news.ycombinator.com/item?id=${c.id}`,
+        url: listingUrl,
         ...info,
         source: "hn" as const,
         postedAt: new Date(c.created_at).toISOString(),
@@ -1217,10 +1250,11 @@ checkStale().catch(console.error);
 
 ```bash
 # Run HN scraper — pipe through ingest to upsert into Convex
-cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts
+export CONVEX_URL="$CONVEX_URL"
+cd /root/vespoid && bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts
 
 # Run Wellfound scraper
-cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/scrape-wellfound.ts | bun run scripts/ingest.ts
+cd /root/vespoid && bun run scripts/scrape-wellfound.ts | bun run scripts/ingest.ts
 ```
 
 Hermes cron command (run from this session):
@@ -1229,7 +1263,7 @@ cronjob(
   action="create",
   name="vespoid-scrape-hn",
   schedule="0 14 */2 * *",  # every 2 days at 14:00 UTC (7am PT / 6am PT DST)
-  prompt="Run the Vespoid HN scraper: cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts. Report how many jobs were found, upserted, and any skipped. If the scraper errors, report the error message.",
+  prompt="Run the Vespoid HN scraper: export CONVEX_URL=\"$CONVEX_URL\" && cd /root/vespoid && bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts. Report how many jobs were found, upserted, and any skipped. If the scraper errors, report the error message.",
   workdir="/root/vespoid",
 )
 ```
@@ -1241,7 +1275,7 @@ cronjob(
   action="create",
   name="vespoid-stale-check",
   schedule="0 14 * * 1",  # every Monday at 14:00 UTC
-  prompt="Run the Vespoid stale detection script: cd /root/vespoid && CONVEX_URL=$CONVEX_URL bun run scripts/check-stale.ts. Report how many jobs were checked, how many were marked stale, and any errors encountered.",
+  prompt="Run the Vespoid stale detection script: export CONVEX_URL=\"$CONVEX_URL\" && cd /root/vespoid && bun run scripts/check-stale.ts. Report how many jobs were checked, how many were marked stale, and any errors encountered.",
   workdir="/root/vespoid",
 )
 ```
@@ -1316,7 +1350,10 @@ Contains the deployment URL. Already in `.gitignore`.
 Convex doesn't support unique constraints. The `by_url` index + application-level check in `upsertJob` prevents duplicates under normal operation. Under concurrent requests (two scrapers running simultaneously), a race could insert duplicate URLs. Mitigation: scrapers run sequentially (not concurrently), and the second write will simply patch the same record.
 
 ### Why client-side text search instead of Convex search?
-Convex search requires enabling the search index on specific fields and is in beta. For a single-user app with <1000 jobs, filtering in-memory after index-constrained queries is simpler and sufficient. **Limitation:** search is applied after `.take(100)`, so results beyond the first page are not searched.
+Convex search requires enabling the search index on specific fields and is in beta. For a single-user app with <1000 jobs, filtering in-memory after index-constrained queries is simpler and sufficient. **Limitation:** search is applied after `.take(100)`, so results beyond the first page are not searched. For large datasets, consider adding a Convex search index.
+
+### URL validation requirement
+All listing URLs stored in the database must be validated: reject non-`https` schemes (`javascript:`, `file:`, `data:`, `chrome:`) before storage. This prevents SSRF in the stale checker and iframe injection in the frontend. Add `new URL(url).protocol === "https:"` validation in `ingest.ts` and `upsertJob`.
 
 ### Why no auth?
 Single-user app. The Convex deployment URL is a shared secret — treat it like an API key.
