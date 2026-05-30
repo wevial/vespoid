@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import type { Id } from "../../convex/_generated/dataModel";
+import { convexHttp } from "@/lib/convex-http";
+import type { FunctionReturnType } from "convex/server";
+
+type StatusCounts = FunctionReturnType<typeof api.jobs.statusCounts>;
+type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
 
 function formatDate(value?: string) {
   if (!value) return "Unknown";
@@ -12,9 +17,37 @@ function formatDate(value?: string) {
 }
 
 export default function Dashboard() {
-  const counts = useQuery(api.jobs.statusCounts);
-  const recentJobs = useQuery(api.jobs.listJobs, { isActive: true });
-  const setStatus = useMutation(api.applications.setStatus);
+  const [counts, setCounts] = useState<StatusCounts>();
+  const [recentJobs, setRecentJobs] = useState<JobList>();
+
+  const refresh = useCallback(async () => {
+    const [nextCounts, nextJobs] = await Promise.all([
+      convexHttp.query(api.jobs.statusCounts),
+      convexHttp.query(api.jobs.listJobs, { isActive: true }),
+    ]);
+    setCounts(nextCounts);
+    setRecentJobs(nextJobs);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      convexHttp.query(api.jobs.statusCounts),
+      convexHttp.query(api.jobs.listJobs, { isActive: true }),
+    ]).then(([nextCounts, nextJobs]) => {
+      if (cancelled) return;
+      setCounts(nextCounts);
+      setRecentJobs(nextJobs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function setStatus(jobId: Id<"jobs">, status: ApplicationStatus) {
+    await convexHttp.mutation(api.applications.setStatus, { jobId, status });
+    await refresh();
+  }
 
   if (counts === undefined || recentJobs === undefined) {
     return <main className="mx-auto max-w-6xl p-8"><div className="animate-pulse text-slate-400">Loading dashboard…</div></main>;
@@ -75,7 +108,7 @@ export default function Dashboard() {
                   {statusKeys.slice(0, 3).map((status) => (
                     <button
                       key={status}
-                      onClick={() => setStatus({ jobId: job._id as Id<"jobs">, status })}
+                      onClick={() => setStatus(job._id as Id<"jobs">, status)}
                       className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-blue-400 hover:text-blue-200"
                     >
                       {STATUS_LABELS[status]}

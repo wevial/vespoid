@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { convexHttp } from "@/lib/convex-http";
+import type { FunctionReturnType } from "convex/server";
+
+type JobDetail = FunctionReturnType<typeof api.jobs.getJobWithApplication>;
 
 function formatDate(value?: string) {
   if (!value) return "Unknown";
@@ -16,11 +19,23 @@ function formatDate(value?: string) {
 export default function JobDetailPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId as Id<"jobs">;
-  const data = useQuery(api.jobs.getJobWithApplication, { jobId });
-  const setStatus = useMutation(api.applications.setStatus);
-  const updateNotes = useMutation(api.applications.updateNotes);
+  const [data, setData] = useState<JobDetail>();
   const [draftNotes, setDraftNotes] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setData(await convexHttp.query(api.jobs.getJobWithApplication, { jobId }));
+  }, [jobId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    convexHttp.query(api.jobs.getJobWithApplication, { jobId }).then((result) => {
+      if (!cancelled) setData(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
 
   if (data === undefined) {
     return <main className="mx-auto max-w-6xl p-8 text-slate-400">Loading listing…</main>;
@@ -36,7 +51,8 @@ export default function JobDetailPage() {
   async function changeStatus(status: ApplicationStatus) {
     setSaving(true);
     try {
-      await setStatus({ jobId, status, notes: notes || undefined });
+      await convexHttp.mutation(api.applications.setStatus, { jobId, status, notes: notes || undefined });
+      await refresh();
     } finally {
       setSaving(false);
     }
@@ -45,7 +61,8 @@ export default function JobDetailPage() {
   async function saveNotes() {
     setSaving(true);
     try {
-      await updateNotes({ jobId, notes });
+      await convexHttp.mutation(api.applications.updateNotes, { jobId, notes });
+      await refresh();
       setDraftNotes(null);
     } finally {
       setSaving(false);

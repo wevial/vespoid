@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import { SOURCE_LABELS, STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
+import { convexHttp } from "@/lib/convex-http";
+import type { FunctionReturnType } from "convex/server";
+
+type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
 
 function formatDate(value?: string) {
   if (!value) return "Unknown";
@@ -27,7 +30,17 @@ export default function JobsPage() {
     }),
     [source, status, remote, search],
   );
-  const jobs = useQuery(api.jobs.listJobs, args);
+  const [jobs, setJobs] = useState<JobList>();
+
+  useEffect(() => {
+    let cancelled = false;
+    convexHttp.query(api.jobs.listJobs, args).then((result) => {
+      if (!cancelled) setJobs(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [args]);
 
   return (
     <main className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
