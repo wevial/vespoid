@@ -26,6 +26,11 @@ This revision addresses 2 remaining issues found during a final review of the pl
 19. **FIX (scaffold non-empty dir)**: `bun create next-app .` now falls back to creating in a temp dir and copying if the current dir is non-empty.
 20. **FIX (URL validation)**: Added design decision requiring `https://` scheme validation on all stored URLs to prevent SSRF and iframe injection.
 
+21. **FIX (statusCounts activeJobs collect)**: Also bounded the second `.collect()` in `statusCounts` to `.take(8192)` — the first was fixed in Round 3 but the `activeJobs` query was missed.
+22. **FIX (HN split on `<p>`)**: Changed `text.split("\\n")` to `text.split(/<p>/i)[0]` — HN Algolia returns HTML with `<p>` paragraph breaks, not `\n`.
+23. **FIX (Wellfound cron)**: Added staggered `vespoid-scrape-wellfound` cron at `30 14 */2 * *` (30 min after HN) so the Wellfound scraper actually runs in production.
+24. **FIX (HN regex https only)**: `extractJobInfo` now only captures `https://` links (not `http://`), so `http://` URLs fall back to the HN permalink instead of being silently dropped by ingest's validation.
+
 1. **BUG FIX (company regex missing `- ` separator)**: The company extraction regex at line 660 only matched `|` and `(` as company/title separators, but not ` - ` (dash-space). For postings like "Acme Corp - Senior Engineer | Remote", the regex matched the `|` and captured "Acme Corp - Senior Engineer" as the company (including the job title). The fallback dash-split path was never reached because the regex matched first. Fixed: changed regex from `/^([^|(]+?)\s*(?:[|(])/` to `/^([^|(]+?)\s*(?:[|(]|- )/` so ` - ` is recognized as a company/title boundary.
 
 2. **BUG FIX (scrape-wellfound — browser leak on error)**: `scrapeWellfound()` called `browser.close()` only at the end of the normal flow and on the auth-wall early-return path. If `page.goto()` threw (timeout, DNS failure, etc.), the function exited without closing the browser, leaking a Chrome process. Fixed: wrapped the body after `chromium.launch()` in `try { ... } finally { await browser.close().catch(() => {}); }`. Removed the now-redundant manual `browser.close()` call from the auth-wall path.
@@ -492,7 +497,7 @@ export const statusCounts = query({
     const activeJobs = await ctx.db
       .query("jobs")
       .withIndex("by_active", (q) => q.eq("isActive", true))
-      .collect();
+      .take(8192);
 
     return {
       total: apps.length,
@@ -768,7 +773,7 @@ function extractJobInfo(firstLine: string, text: string, author: string): Pick<J
   }
 
   // Extract actual listing URL from comment body (first https link to external site)
-  const urlMatch = text.match(/href="(https?:\/\/(?!news\.ycombinator\.com)[^"]+)"/);
+  const urlMatch = text.match(/href="(https:\/\/(?!news\.ycombinator\.com)[^"]+)"/);
   const url = urlMatch ? urlMatch[1] : undefined;
 
   // Full description: strip HTML from full text
@@ -790,11 +795,12 @@ async function scrapeHN(): Promise<JobListing[]> {
     .filter((c: any) => c.text && c.author !== "whoishiring")
     .map((c: any) => {
       const text = c.text;
-      const lines = text.split("\n").filter(Boolean);
-      const firstLine = lines[0] ?? "";
+      // HN Algolia returns HTML text with <p> paragraph breaks (not \n).
+      // Split on <p> to get the first line (headline) vs body.
+      const firstLineHtml = text.split(/<p>/i)[0] ?? "";
+      const firstLine = firstLineHtml.replace(/<[^>]*>/g, ""); // strip remaining inline tags
 
       const info = extractJobInfo(firstLine, text, c.author);
-
       // Use the actual listing URL if found, fall back to HN comment permalink
       // NOTE: ...info must come BEFORE url: listingUrl so the explicit url wins
       const listingUrl = info.url ?? `https://news.ycombinator.com/item?id=${c.id}`;
@@ -1271,6 +1277,18 @@ cronjob(
   name="vespoid-stale-check",
   schedule="0 14 * * 1",  # every Monday at 14:00 UTC
   prompt="Run the Vespoid stale detection script: export CONVEX_URL=\"$CONVEX_URL\" && cd /root/vespoid && bun run scripts/check-stale.ts. Report how many jobs were checked, how many were marked stale, and any errors encountered.",
+  workdir="/root/vespoid",
+)
+```
+
+### Wellfound scraper cron (staggered by 30 min)
+
+```
+cronjob(
+  action="create",
+  name="vespoid-scrape-wellfound",
+  schedule="30 14 */2 * *",  # every 2 days at 14:30 UTC (30 min after HN, avoids race)
+  prompt="Run the Vespoid Wellfound scraper: export CONVEX_URL=\"$CONVEX_URL\" && cd /root/vespoid && bun run scripts/scrape-wellfound.ts | bun run scripts/ingest.ts. Report how many jobs were found, upserted, and any skipped. Note whether authentication was required (empty results may mean auth wall).",
   workdir="/root/vespoid",
 )
 ```
