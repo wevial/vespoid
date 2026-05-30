@@ -426,6 +426,8 @@ export const listJobs = query({
     const jobs = await q.order("desc").take(100);
 
     // Join with application status if filtering by status
+    // NOTE: When both status and search are set, search is dropped (status filter returns first).
+    // This is a known limitation — fix by combining both filters or making them mutually exclusive.
     if (args.status) {
       const apps = await ctx.db
         .query("applications")
@@ -477,7 +479,7 @@ export const listActiveJobs = query({
 
 export const statusCounts = query({
   handler: async (ctx) => {
-    const apps = await ctx.db.query("applications").collect();
+    const apps = await ctx.db.query("applications").take(8192);
     const counts: Record<string, number> = {};
     for (const a of apps) {
       counts[a.status] = (counts[a.status] ?? 0) + 1;
@@ -794,11 +796,12 @@ async function scrapeHN(): Promise<JobListing[]> {
       const info = extractJobInfo(firstLine, text, c.author);
 
       // Use the actual listing URL if found, fall back to HN comment permalink
+      // NOTE: ...info must come BEFORE url: listingUrl so the explicit url wins
       const listingUrl = info.url ?? `https://news.ycombinator.com/item?id=${c.id}`;
 
       return {
-        url: listingUrl,
         ...info,
+        url: listingUrl,
         source: "hn" as const,
         postedAt: new Date(c.created_at).toISOString(),
       };
@@ -811,7 +814,10 @@ async function scrapeHN(): Promise<JobListing[]> {
 import path from "path";
 if (Bun.main === import.meta.path) {
   scrapeHN()
-    .then((jobs) => console.log(JSON.stringify({ source: "hn", jobs })))
+    .then((jobs) => {
+      const filtered = filterJobs(jobs);
+      console.log(JSON.stringify({ source: "hn", jobs: filtered }));
+    })
     .catch((err) => {
       console.error("HN scraper failed:", err);
       process.exit(1);
@@ -1071,7 +1077,7 @@ process.stdin.on("end", async () => {
 
     // Validate required fields before upserting
     const validJobs = jobs.filter((j: any) =>
-      j.url && j.title && j.company
+      j.url && j.title && j.company && typeof j.url === "string" && j.url.startsWith("https://")
     );
     const skipped = jobs.length - validJobs.length;
 
@@ -1095,18 +1101,7 @@ process.stdin.on("end", async () => {
 
 **Usage:** `bun run scripts/scrape-hn.ts | bun run scripts/ingest.ts`
 
-**Better approach:** Make each scraper import and call the Convex mutation directly, so there's no intermediate JSON pipe:
-
-```ts
-// At the end of scrape-hn.ts (when not run standalone):
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api.js";
-
-const client = new ConvexHttpClient(process.env.CONVEX_URL!);
-for (const job of filteredJobs) {
-  await client.mutation(api.jobs.upsertJob, job);
-}
-```
+(Note: For simplicity, you can also have each scraper call the Convex mutation directly instead of piping through ingest. This avoids the pipe JSON serialization overhead. Choose one approach and stick with it.)
 
 **Changes from original:**
 - Added `CONVEX_URL` validation with descriptive error
