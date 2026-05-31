@@ -1,3 +1,5 @@
+export { SOURCE_LABELS } from "./job-sources";
+
 export const STATUSES = ["saved", "applied", "screen", "interview", "offer", "rejected", "archived"] as const;
 export type ApplicationStatus = (typeof STATUSES)[number];
 
@@ -9,10 +11,4 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   offer: "Offer",
   rejected: "Rejected",
   archived: "Archived",
-};
-
-export const SOURCE_LABELS: Record<string, string> = {
-  hn: "HN Who's Hiring",
-  yc: "YC Work at a Startup",
-  wellfound: "Wellfound",
 };

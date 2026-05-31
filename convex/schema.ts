@@ -11,7 +11,13 @@ export const statusValidator = v.union(
   v.literal("archived"),
 );
 
-export const sourceValidator = v.union(v.literal("hn"), v.literal("wellfound"), v.literal("yc"));
+export const sourceValidator = v.union(
+  v.literal("hn"),
+  v.literal("wellfound"),
+  v.literal("yc"),
+  v.literal("company_board"),
+  v.literal("city_board"),
+);
 
 export default defineSchema({
   jobs: defineTable({

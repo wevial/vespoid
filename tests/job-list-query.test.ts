@@ -33,9 +33,9 @@ describe("job list URL query state", () => {
     expect(jobListFiltersToSearchParams(DEFAULT_JOB_LIST_FILTERS).toString()).toBe("");
   });
 
-  test("accepts YC as a source filter", () => {
-    const query = new URLSearchParams("source=yc");
-
-    expect(jobListFiltersFromSearchParams(query).source).toBe("yc");
+  test("accepts active ingestion sources as source filters", () => {
+    expect(jobListFiltersFromSearchParams(new URLSearchParams("source=yc")).source).toBe("yc");
+    expect(jobListFiltersFromSearchParams(new URLSearchParams("source=company_board")).source).toBe("company_board");
+    expect(jobListFiltersFromSearchParams(new URLSearchParams("source=city_board")).source).toBe("city_board");
   });
 });

@@ -134,6 +134,8 @@ export default function JobsPage() {
           <option value="">All sources</option>
           <option value="hn">HN</option>
           <option value="yc">YC</option>
+          <option value="company_board">Company boards</option>
+          <option value="city_board">City boards</option>
           <option value="wellfound">Wellfound</option>
         </select>
         <select value={status} onChange={(e) => setFilter({ status: e.target.value as typeof status })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">

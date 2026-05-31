@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
+import { isJobSource, type JobSource } from "../src/lib/job-sources";
 
 const CONVEX_URL = process.env.CONVEX_URL;
 if (!CONVEX_URL) {
@@ -56,7 +57,7 @@ interface IngestJob {
   url: string;
   title: string;
   company: string;
-  source: "hn" | "wellfound" | "yc";
+  source: JobSource;
   description?: string;
   salaryRange?: string;
   location?: string;
@@ -67,8 +68,8 @@ interface IngestJob {
   [key: string]: unknown;
 }
 
-function isSource(value: unknown): value is "hn" | "wellfound" | "yc" {
-  return value === "hn" || value === "wellfound" || value === "yc";
+function isSource(value: unknown): value is JobSource {
+  return isJobSource(value);
 }
 
 function isIngestJob(job: RawJob): job is IngestJob {
