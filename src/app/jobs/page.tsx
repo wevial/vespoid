@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import { SOURCE_LABELS, STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import { convexHttp } from "@/lib/convex-http";
+import { sortJobs, type JobSortOption } from "@/lib/job-sort";
 import type { FunctionReturnType } from "convex/server";
 
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
@@ -25,6 +26,7 @@ export default function JobsPage() {
   const [status, setStatus] = useState<"" | ApplicationStatus>("");
   const [remote, setRemote] = useState("");
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<JobSortOption>("fit");
 
   const args = useMemo(
     () => ({
@@ -37,6 +39,7 @@ export default function JobsPage() {
     [source, status, remote, search],
   );
   const [jobs, setJobs] = useState<JobList>();
+  const sortedJobs = useMemo(() => (jobs ? sortJobs(jobs, sort) : undefined), [jobs, sort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +61,7 @@ export default function JobsPage() {
         </div>
       </header>
 
-      <section className="neon-panel grid gap-3 rounded-2xl p-4 md:grid-cols-4">
+      <section className="neon-panel grid gap-3 rounded-2xl p-4 md:grid-cols-5">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title/company/description" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
         <select value={source} onChange={(e) => setSource(e.target.value as typeof source)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
           <option value="">All sources</option>
@@ -70,11 +73,16 @@ export default function JobsPage() {
           {(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((key) => <option key={key} value={key}>{STATUS_LABELS[key]}</option>)}
         </select>
         <input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="remote / hybrid / onsite" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
+        <select value={sort} onChange={(e) => setSort(e.target.value as JobSortOption)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Sort jobs">
+          <option value="fit">Sort: best fit</option>
+          <option value="date-desc">Sort: date listed</option>
+          <option value="salary-desc">Sort: salary high to low</option>
+        </select>
       </section>
 
       {jobs === undefined ? (
         <div className="neon-panel rounded-2xl p-8 text-fuchsia-100/62">Loading jobs…</div>
-      ) : jobs.length === 0 ? (
+      ) : sortedJobs && sortedJobs.length === 0 ? (
         <div className="neon-panel rounded-2xl p-8 text-fuchsia-100/62">No jobs match these filters.</div>
       ) : (
         <section className="neon-panel neon-panel-hot overflow-hidden rounded-2xl">
@@ -82,7 +90,7 @@ export default function JobsPage() {
             <span className="col-span-5">Role</span><span className="col-span-2">Source</span><span className="col-span-2">Remote</span><span className="col-span-2">Discovered</span><span className="col-span-1">Live</span>
           </div>
           <div className="neon-divider divide-y divide-white/10">
-            {jobs.map((job) => (
+            {sortedJobs?.map((job) => (
               <Link key={job._id} href={`/jobs/${job._id}`} className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12">
                 <span className="md:col-span-5">
                   <strong className="block text-fuchsia-50">{job.title}</strong>
