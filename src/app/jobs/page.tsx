@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { api } from "../../../convex/_generated/api";
 import { SOURCE_LABELS, STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import { convexHttp } from "@/lib/convex-http";
+import { formatDateLabel } from "@/lib/date-format";
 import { sortJobs, type JobSortOption } from "@/lib/job-sort";
 import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
 import { DEFAULT_JOB_LIST_FILTERS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "@/lib/job-list-query";
@@ -14,8 +15,7 @@ import type { FunctionReturnType } from "convex/server";
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
 
 function formatDate(value?: string) {
-  if (!value) return "Unknown";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+  return formatDateLabel(value, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function formatSalaryPreview(value?: string) {

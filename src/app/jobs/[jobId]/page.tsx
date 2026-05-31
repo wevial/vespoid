@@ -7,13 +7,13 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import { useCallback, useEffect, useState } from "react";
 import { convexHttp } from "@/lib/convex-http";
+import { formatDateLabel } from "@/lib/date-format";
 import type { FunctionReturnType } from "convex/server";
 
 type JobDetail = FunctionReturnType<typeof api.jobs.getJobWithApplication>;
 
 function formatDate(value?: string) {
-  if (!value) return "Unknown";
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
+  return formatDateLabel(value, { dateStyle: "medium" });
 }
 
 export default function JobDetailPage() {

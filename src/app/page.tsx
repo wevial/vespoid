@@ -6,14 +6,14 @@ import { api } from "../../convex/_generated/api";
 import { STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import type { Id } from "../../convex/_generated/dataModel";
 import { convexHttp } from "@/lib/convex-http";
+import { formatDateLabel } from "@/lib/date-format";
 import type { FunctionReturnType } from "convex/server";
 
 type StatusCounts = FunctionReturnType<typeof api.jobs.statusCounts>;
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
 
 function formatDate(value?: string) {
-  if (!value) return "Unknown";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
+  return formatDateLabel(value, { month: "short", day: "numeric" });
 }
 
 export default function Dashboard() {
