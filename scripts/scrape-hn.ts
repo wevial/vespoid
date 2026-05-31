@@ -1,5 +1,6 @@
 import { JSDOM } from "jsdom";
 import { classifyJobFit } from "../src/lib/job-fit";
+import type { HNRawHiringPost } from "../src/lib/llm-curation";
 
 export interface JobListing {
   url: string;
@@ -221,7 +222,7 @@ export function filterJobs(jobs: JobListing[]): JobListing[] {
     .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
 }
 
-export async function scrapeHN(): Promise<JobListing[]> {
+export async function scrapeHNRawPosts(): Promise<HNRawHiringPost[]> {
   const threadId = await findHiringThread();
   const res = await fetch(`https://hn.algolia.com/api/v1/items/${threadId}`);
   if (!res.ok) throw new Error(`HN items fetch failed: ${res.status}`);
@@ -230,12 +231,27 @@ export async function scrapeHN(): Promise<JobListing[]> {
 
   return comments
     .filter((comment): comment is AlgoliaComment & { text: string } => Boolean(comment.text) && comment.author !== "whoishiring")
-    .flatMap((comment) => {
+    .map((comment) => {
       const text = comment.text;
       const firstLineHtml = text.split(/<p>/i)[0] ?? "";
       const firstLine = firstLineHtml.replace(/<[^>]*>/g, "");
-      const infos = extractJobInfos(firstLine, text, comment.author);
-      const baseUrl = infos[0]?.url ?? `https://news.ycombinator.com/item?id=${comment.id}`;
+      return {
+        id: comment.id,
+        author: comment.author,
+        createdAt: new Date(comment.created_at).toISOString(),
+        firstLine: decodeHtml(firstLine),
+        text: stripHtmlWithLineBreaks(text),
+      };
+    });
+}
+
+export async function scrapeHN(): Promise<JobListing[]> {
+  const posts = await scrapeHNRawPosts();
+
+  return posts
+    .flatMap((post) => {
+      const infos = extractJobInfos(post.firstLine, post.text, post.author);
+      const baseUrl = infos[0]?.url ?? `https://news.ycombinator.com/item?id=${post.id}`;
       return infos.map((info, index) => {
         const slug = info.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
         const listingUrl = infos.length > 1 ? `${baseUrl}#role-${index + 1}-${slug}` : (info.url ?? baseUrl);
@@ -243,7 +259,7 @@ export async function scrapeHN(): Promise<JobListing[]> {
           ...info,
           url: listingUrl,
           source: "hn" as const,
-          postedAt: new Date(comment.created_at).toISOString(),
+          postedAt: post.createdAt,
         };
       });
     });

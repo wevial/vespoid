@@ -81,6 +81,7 @@ export function isTargetLocation(location?: string, remoteStatus?: string, descr
   const explicit = [explicitLocation, explicitStatus].join(" ");
 
   if (TARGET_METRO.test(explicit) || SPAIN.test(explicit)) return true;
+  if (LOCAL_ONLY.test([explicit, description].filter(Boolean).join(" "))) return false;
   if (REMOTE.test(explicit)) return true;
   if (ONSITE_OR_HYBRID.test(explicit)) return false;
   if (LOCAL_ONLY.test(description ?? "")) return false;

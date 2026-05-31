@@ -93,6 +93,14 @@ describe("target job fit", () => {
       location: "Minneapolis, MN",
       description: "Work is remote, but applicants must be local to the Twin Cities metro area. Python, Django, JavaScript product work.",
     }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Senior Fullstack Python Developer",
+      company: "Giftster",
+      location: "Minneapolis, MN (Greater Twin Cities Metro)",
+      remoteStatus: "Remote but local candidates only",
+      description: "Python, Django, JavaScript product work.",
+    }).isRelevant).toBe(false);
   });
 
   test("rejects roles that are clearly outside product/full-stack engineering", () => {
