@@ -32,4 +32,10 @@ describe("job list URL query state", () => {
   test("drops default values from the URL", () => {
     expect(jobListFiltersToSearchParams(DEFAULT_JOB_LIST_FILTERS).toString()).toBe("");
   });
+
+  test("accepts YC as a source filter", () => {
+    const query = new URLSearchParams("source=yc");
+
+    expect(jobListFiltersFromSearchParams(query).source).toBe("yc");
+  });
 });

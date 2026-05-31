@@ -127,7 +127,7 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     rejectionReasons.push("not target role");
   }
 
-  if (NON_TARGET_ROLE.test(job.title) && (!/engineer|developer/i.test(job.title) || /\bdesign engineer\b/i.test(job.title))) {
+  if (NON_TARGET_ROLE.test(job.title) && (!/engineer|developer/i.test(job.title) || /\b(design engineer|intern\b|internship)\b/i.test(job.title))) {
     score -= 4;
     rejectionReasons.push("not target role");
   }

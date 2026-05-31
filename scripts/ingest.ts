@@ -56,7 +56,7 @@ interface IngestJob {
   url: string;
   title: string;
   company: string;
-  source: "hn" | "wellfound";
+  source: "hn" | "wellfound" | "yc";
   description?: string;
   salaryRange?: string;
   location?: string;
@@ -67,8 +67,8 @@ interface IngestJob {
   [key: string]: unknown;
 }
 
-function isSource(value: unknown): value is "hn" | "wellfound" {
-  return value === "hn" || value === "wellfound";
+function isSource(value: unknown): value is "hn" | "wellfound" | "yc" {
+  return value === "hn" || value === "wellfound" || value === "yc";
 }
 
 function isIngestJob(job: RawJob): job is IngestJob {

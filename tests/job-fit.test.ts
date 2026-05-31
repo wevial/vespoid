@@ -124,6 +124,18 @@ describe("target job fit", () => {
 
     expect(designEngineer.isRelevant).toBe(false);
     expect(designEngineer.rejectionReasons).toContain("not target role");
+
+    const intern = classifyJobFit({
+      title: "AI Engineer Intern",
+      company: "Great Question",
+      location: "US / Remote (US)",
+      remoteStatus: "remote",
+      salaryRange: "$6K - $8K / monthly",
+      description: "Internship. Engineering, Full stack. React and AI.",
+    });
+
+    expect(intern.isRelevant).toBe(false);
+    expect(intern.rejectionReasons).toContain("not target role");
   });
 
   test("rejects grouped company posts that mix target engineering roles with non-target roles", () => {

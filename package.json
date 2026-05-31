@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "bun test",
     "scrape:hn": "bun run scripts/scrape-hn.ts",
+    "scrape:yc": "bun run scripts/scrape-yc.ts",
     "curate:hn:llm": "bun run scripts/curate-hn-llm.ts",
     "scrape:wellfound": "bun run scripts/scrape-wellfound.ts",
     "ingest": "bun run scripts/ingest.ts",

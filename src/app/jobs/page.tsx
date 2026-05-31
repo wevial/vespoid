@@ -116,6 +116,7 @@ export default function JobsPage() {
         <select value={source} onChange={(e) => setFilter({ source: e.target.value as typeof source })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
           <option value="">All sources</option>
           <option value="hn">HN</option>
+          <option value="yc">YC</option>
           <option value="wellfound">Wellfound</option>
         </select>
         <select value={status} onChange={(e) => setFilter({ status: e.target.value as typeof status })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">

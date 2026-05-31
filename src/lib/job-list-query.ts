@@ -3,7 +3,7 @@ import type { JobAreaFilter } from "./job-area";
 import type { JobSortOption } from "./job-sort";
 
 export interface JobListFilters {
-  source: "" | "hn" | "wellfound";
+  source: "" | "hn" | "wellfound" | "yc";
   status: "" | ApplicationStatus;
   remote: string;
   search: string;
@@ -20,7 +20,7 @@ export const DEFAULT_JOB_LIST_FILTERS: JobListFilters = {
   area: "all",
 };
 
-const VALID_SOURCES = new Set(["", "hn", "wellfound"]);
+const VALID_SOURCES = new Set(["", "hn", "wellfound", "yc"]);
 const VALID_STATUSES = new Set(["", "saved", "applied", "screen", "interview", "offer", "rejected", "archived"]);
 const VALID_SORTS = new Set(["fit", "date-desc", "salary-desc"]);
 const VALID_AREAS = new Set(["all", "remote", "sf-bay", "seattle", "denver-boulder", "spain"]);

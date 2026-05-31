@@ -13,5 +13,6 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
 
 export const SOURCE_LABELS: Record<string, string> = {
   hn: "HN Who's Hiring",
+  yc: "YC Work at a Startup",
   wellfound: "Wellfound",
 };
