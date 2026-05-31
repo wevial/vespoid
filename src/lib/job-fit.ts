@@ -113,10 +113,13 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     return { isRelevant: false, score: 0, reasons, rejectionReasons: ["not a direct job post"] };
   }
 
-  if (TARGET_ROLE.test(text)) {
+  if (TARGET_ROLE.test(job.title)) {
     score += 4;
     reasons.push("target role");
-  } else if (TARGET_STACK.test(text) && /\bengineer|developer|programmer\b/i.test(text)) {
+  } else if (TARGET_STACK.test(job.title) && /\bengineer|developer|programmer\b/i.test(job.title)) {
+    score += 2;
+    reasons.push("engineering role with target stack");
+  } else if (/\b(software|backend|platform|infrastructure) engineer\b/i.test(job.title) && TARGET_STACK.test(text)) {
     score += 2;
     reasons.push("engineering role with target stack");
   } else {

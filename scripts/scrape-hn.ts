@@ -22,6 +22,10 @@ export function stripHtml(html: string): string {
   return (dom.window.document.body.textContent ?? "").trim();
 }
 
+function stripHtmlWithLineBreaks(html: string): string {
+  return stripHtml(html.replace(/<\s*(?:br|p|li)\b[^>]*>/gi, "\n").replace(/<\/\s*(?:p|li)>/gi, "\n"));
+}
+
 function decodeHtml(value: string): string {
   return stripHtml(value);
 }
@@ -89,6 +93,52 @@ function isUrlSegment(value: string): boolean {
   return /^https?:\/\//i.test(value) || /\.[a-z]{2,}(?:\/|$)/i.test(value);
 }
 
+function cleanRoleCandidate(value: string): string {
+  return decodeHtml(value)
+    .replace(/^[-*•\s]+/, "")
+    .replace(/\s+-\s+(?:https?:\/\/|apply\b|\$\d).*/i, "")
+    .replace(/\s+\|\s+(?:https?:\/\/|apply\b|\$\d).*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isTargetSplitRole(value: string): boolean {
+  if (!isRoleSegment(value)) return false;
+  if (/\b(product manager|project manager|program manager|designer|marketing|sales|account executive|head of|manager,|recruiter)\b/i.test(value)) return false;
+  if (/\b(data scientist|machine learning researcher|research scientist)\b/i.test(value)) return false;
+  return /\b(engineer|developer|full[-\s]?stack|frontend|front[-\s]?end|backend|platform|infrastructure|devops|sre|technical lead|architect)\b/i.test(value);
+}
+
+function extractExplicitRoleTitles(text: string): string[] {
+  const normalized = stripHtmlWithLineBreaks(text);
+  const lines = normalized.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const roleTitles: string[] = [];
+
+  for (const line of lines) {
+    const bulletMatch = line.match(/^[-*•]\s*(.+)$/);
+    if (!bulletMatch) continue;
+    const candidate = cleanRoleCandidate(bulletMatch[1]);
+    if (candidate.length > 3 && candidate.length < 120 && isTargetSplitRole(candidate)) {
+      roleTitles.push(candidate);
+    }
+  }
+
+  return [...new Set(roleTitles)];
+}
+
+function stripExplicitRoleBullets(text: string): string {
+  const normalized = stripHtmlWithLineBreaks(text);
+  return normalized
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => {
+      const bulletMatch = line.match(/^[-*•]\s*(.+)$/);
+      return !bulletMatch || !isRoleSegment(cleanRoleCandidate(bulletMatch[1]));
+    })
+    .join("\n")
+    .trim();
+}
+
 export function extractJobInfo(firstLine: string, text: string, author: string): Omit<JobListing, "source" | "postedAt" | "url"> & { url?: string } {
   const cleanLine = decodeHtml(firstLine.replace(/<[^>]*>/g, ""));
   let company: string;
@@ -147,6 +197,19 @@ export function extractJobInfo(firstLine: string, text: string, author: string):
   return { url, title, company, description, salaryRange, location, remoteStatus };
 }
 
+export function extractJobInfos(firstLine: string, text: string, author: string): Array<Omit<JobListing, "source" | "postedAt" | "url"> & { url?: string }> {
+  const base = extractJobInfo(firstLine, text, author);
+  const roleTitles = extractExplicitRoleTitles(text);
+  if (roleTitles.length < 2) return [base];
+
+  const baseDescription = stripExplicitRoleBullets(text);
+  return roleTitles.map((title) => ({
+    ...base,
+    title,
+    description: `${title}\n\n${baseDescription}`,
+  }));
+}
+
 export function filterJobs(jobs: JobListing[]): JobListing[] {
   const excludePatterns = /robert half|teksystems|kforce|randstad|staffing|recruiting|aquent/i;
   return jobs
@@ -167,18 +230,22 @@ export async function scrapeHN(): Promise<JobListing[]> {
 
   return comments
     .filter((comment): comment is AlgoliaComment & { text: string } => Boolean(comment.text) && comment.author !== "whoishiring")
-    .map((comment) => {
+    .flatMap((comment) => {
       const text = comment.text;
       const firstLineHtml = text.split(/<p>/i)[0] ?? "";
       const firstLine = firstLineHtml.replace(/<[^>]*>/g, "");
-      const info = extractJobInfo(firstLine, text, comment.author);
-      const listingUrl = info.url ?? `https://news.ycombinator.com/item?id=${comment.id}`;
-      return {
-        ...info,
-        url: listingUrl,
-        source: "hn" as const,
-        postedAt: new Date(comment.created_at).toISOString(),
-      };
+      const infos = extractJobInfos(firstLine, text, comment.author);
+      const baseUrl = infos[0]?.url ?? `https://news.ycombinator.com/item?id=${comment.id}`;
+      return infos.map((info, index) => {
+        const slug = info.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+        const listingUrl = infos.length > 1 ? `${baseUrl}#role-${index + 1}-${slug}` : (info.url ?? baseUrl);
+        return {
+          ...info,
+          url: listingUrl,
+          source: "hn" as const,
+          postedAt: new Date(comment.created_at).toISOString(),
+        };
+      });
     });
 }
 

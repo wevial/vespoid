@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractJobInfo } from "../scripts/scrape-hn";
+import { extractJobInfo, extractJobInfos } from "../scripts/scrape-hn";
 import { classifyJobFit, extractSalaryRange, isTargetLocation } from "../src/lib/job-fit";
 
 describe("target job fit", () => {
@@ -128,6 +128,27 @@ describe("target job fit", () => {
 
     expect(fit.isRelevant).toBe(false);
     expect(fit.rejectionReasons).toContain("grouped mixed-role post");
+  });
+
+  test("does not let sibling roles in a split HN comment make non-target individual roles relevant", () => {
+    const rustFit = classifyJobFit({
+      title: "Senior Rust Engineer",
+      company: "Foxglove",
+      remoteStatus: "Onsite San Francisco + Remote",
+      description: "Many open roles: Senior Frontend Engineer, Product Manager, TypeScript, React, AI platform.",
+    });
+
+    expect(rustFit.isRelevant).toBe(false);
+    expect(rustFit.rejectionReasons).toContain("not target role");
+
+    const frontendFit = classifyJobFit({
+      title: "Senior Frontend Engineer (Visualization, WebGL, WASM)",
+      company: "Foxglove",
+      remoteStatus: "Onsite San Francisco + Remote",
+      description: "TypeScript, React, AI platform work.",
+    });
+
+    expect(frontendFit.isRelevant).toBe(true);
   });
 
   test("rejects generic multi-role company posts until roles are split into individual listings", () => {
@@ -276,5 +297,31 @@ describe("HN listing extraction", () => {
     expect(info.title).toBe("Junior to Senior Fullstack Engineer multiple positions");
     expect(info.location).toBe("Austin, TX");
     expect(info.remoteStatus).toBe("onsite or fully remote");
+  });
+
+  test("splits HN company comments with explicit role lists into individual target role listings", () => {
+    const infos = extractJobInfos(
+      "Foxglove | Onsite (San Francisco) + Remote | Full Time | https://foxglove.dev/",
+      `Foxglove | Onsite (San Francisco) + Remote | Full Time | https://foxglove.dev/<p>
+        Foxglove is the leading observability platform for robotics and physical AI.
+        Many open roles:<p>
+        - Senior Rust Engineer<br>
+        - Senior Frontend Engineer (Visualization, WebGL, WASM)<br>
+        - Solutions Engineer, Data Infrastructure<br>
+        - Product Manager, Data + ML<br>
+        - Account Executive<br>
+        Email jobs@example.com
+      `,
+      "foxglove",
+    );
+
+    expect(infos.map((info) => info.title)).toEqual([
+      "Senior Rust Engineer",
+      "Senior Frontend Engineer (Visualization, WebGL, WASM)",
+      "Solutions Engineer, Data Infrastructure",
+    ]);
+    expect(infos.every((info) => info.company === "Foxglove")).toBe(true);
+    expect(infos.every((info) => info.remoteStatus === "onsite (san francisco) + remote")).toBe(true);
+    expect(infos.every((info) => !info.description.includes("Product Manager"))).toBe(true);
   });
 });

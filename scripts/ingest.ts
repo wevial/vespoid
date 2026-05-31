@@ -94,6 +94,14 @@ process.stdin.on("end", async () => {
 
     const validJobs = jobs.filter(isIngestJob);
     const skipped = jobs.length - validJobs.length;
+    const activeBefore = await client.query(api.jobs.listActiveJobs);
+    const currentUrlsBySource = new Map<IngestJob["source"], Set<string>>();
+    for (const job of validJobs) {
+      const urls = currentUrlsBySource.get(job.source) ?? new Set<string>();
+      urls.add(job.url);
+      currentUrlsBySource.set(job.source, urls);
+    }
+
     let count = 0;
     for (const job of validJobs) {
       try {
@@ -103,7 +111,18 @@ process.stdin.on("end", async () => {
         console.error(`Failed to upsert job ${job.url}:`, error);
       }
     }
-    console.log(`Upserted ${count} jobs${skipped > 0 ? ` (${skipped} skipped — missing required fields or unsafe URL)` : ""}`);
+
+    const staleIds = activeBefore
+      .filter((job) => {
+        const sourceUrls = currentUrlsBySource.get(job.source);
+        return sourceUrls !== undefined && !sourceUrls.has(job.url);
+      })
+      .map((job) => job._id);
+    if (staleIds.length > 0) {
+      await client.mutation(api.jobs.markStaleBatch, { jobIds: staleIds });
+    }
+
+    console.log(`Upserted ${count} jobs${staleIds.length > 0 ? ` (${staleIds.length} stale)` : ""}${skipped > 0 ? ` (${skipped} skipped — missing required fields or unsafe URL)` : ""}`);
   } catch (error) {
     console.error("Failed to parse input:", error);
     process.exit(1);

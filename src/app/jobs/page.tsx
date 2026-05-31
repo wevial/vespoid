@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api } from "../../../convex/_generated/api";
 import { SOURCE_LABELS, STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import { convexHttp } from "@/lib/convex-http";
 import { sortJobs, type JobSortOption } from "@/lib/job-sort";
 import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
+import { DEFAULT_JOB_LIST_FILTERS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "@/lib/job-list-query";
 import type { FunctionReturnType } from "convex/server";
 
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
@@ -22,13 +23,38 @@ function formatSalaryPreview(value?: string) {
   return normalized.length > 72 ? `${normalized.slice(0, 69)}…` : normalized;
 }
 
+const FILTER_CHANGE_EVENT = "vespoid:job-list-filter-change";
+
+function subscribeToUrlFilterChanges(callback: () => void) {
+  window.addEventListener("popstate", callback);
+  window.addEventListener(FILTER_CHANGE_EVENT, callback);
+  return () => {
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener(FILTER_CHANGE_EVENT, callback);
+  };
+}
+
+function getUrlSearchSnapshot() {
+  return window.location.search;
+}
+
+function getServerUrlSearchSnapshot() {
+  return "";
+}
+
 export default function JobsPage() {
-  const [source, setSource] = useState<"" | "hn" | "wellfound">("");
-  const [status, setStatus] = useState<"" | ApplicationStatus>("");
-  const [remote, setRemote] = useState("");
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<JobSortOption>("fit");
-  const [area, setArea] = useState<JobAreaFilter>("all");
+  const urlSearch = useSyncExternalStore(subscribeToUrlFilterChanges, getUrlSearchSnapshot, getServerUrlSearchSnapshot);
+  const filters = useMemo(() => jobListFiltersFromSearchParams(new URLSearchParams(urlSearch)), [urlSearch]);
+  const { source, status, remote, search, sort, area } = filters;
+
+  const setFilter = useCallback((patch: Partial<typeof DEFAULT_JOB_LIST_FILTERS>) => {
+    const nextFilters = { ...filters, ...patch };
+    const params = jobListFiltersToSearchParams(nextFilters);
+    const query = params.toString();
+    const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.replaceState(window.history.state, "", nextUrl);
+    window.dispatchEvent(new Event(FILTER_CHANGE_EVENT));
+  }, [filters]);
 
   const args = useMemo(
     () => ({
@@ -64,17 +90,17 @@ export default function JobsPage() {
       </header>
 
       <section className="neon-panel grid gap-3 rounded-2xl p-4 md:grid-cols-6">
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title/company/description" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
-        <select value={source} onChange={(e) => setSource(e.target.value as typeof source)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
+        <input value={search} onChange={(e) => setFilter({ search: e.target.value })} placeholder="Search title/company/description" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
+        <select value={source} onChange={(e) => setFilter({ source: e.target.value as typeof source })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
           <option value="">All sources</option>
           <option value="hn">HN</option>
           <option value="wellfound">Wellfound</option>
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
+        <select value={status} onChange={(e) => setFilter({ status: e.target.value as typeof status })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
           <option value="">Any status</option>
           {(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((key) => <option key={key} value={key}>{STATUS_LABELS[key]}</option>)}
         </select>
-        <select value={area} onChange={(e) => setArea(e.target.value as JobAreaFilter)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Filter by area">
+        <select value={area} onChange={(e) => setFilter({ area: e.target.value as JobAreaFilter })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Filter by area">
           <option value="all">Area: all</option>
           <option value="remote">Area: remote</option>
           <option value="sf-bay">Area: SF Bay</option>
@@ -82,8 +108,8 @@ export default function JobsPage() {
           <option value="denver-boulder">Area: Denver/Boulder</option>
           <option value="spain">Area: Spain maybe</option>
         </select>
-        <input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="remote / hybrid / onsite" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
-        <select value={sort} onChange={(e) => setSort(e.target.value as JobSortOption)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Sort jobs">
+        <input value={remote} onChange={(e) => setFilter({ remote: e.target.value })} placeholder="remote / hybrid / onsite" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
+        <select value={sort} onChange={(e) => setFilter({ sort: e.target.value as JobSortOption })} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Sort jobs">
           <option value="fit">Sort: best fit</option>
           <option value="date-desc">Sort: date listed</option>
           <option value="salary-desc">Sort: salary high to low</option>
