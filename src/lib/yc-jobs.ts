@@ -105,3 +105,13 @@ export function parseYcJobsFromHtml(html: string): YcJobListing[] {
   }
   throw new Error("Could not find YC jobPostings data-page payload");
 }
+
+export function parseYcJobsFromHtmlPages(htmlPages: string[]): YcJobListing[] {
+  const jobsByUrl = new Map<string, YcJobListing>();
+  for (const html of htmlPages) {
+    for (const job of parseYcJobsFromHtml(html)) {
+      if (!jobsByUrl.has(job.url)) jobsByUrl.set(job.url, job);
+    }
+  }
+  return Array.from(jobsByUrl.values());
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mapYcJobPosting, parseYcJobsFromHtml } from "../src/lib/yc-jobs";
+import { mapYcJobPosting, parseYcJobsFromHtml, parseYcJobsFromHtmlPages } from "../src/lib/yc-jobs";
 
 const samplePosting = {
   id: 44310,
@@ -57,5 +57,28 @@ describe("YC jobs parser", () => {
     const jobs = parseYcJobsFromHtml(htmlWithPostings([{ ...samplePosting, title: "" }]));
 
     expect(jobs).toHaveLength(0);
+  });
+
+  test("combines YC jobs from multiple public route payloads and dedupes by URL", () => {
+    const remotePosting = {
+      ...samplePosting,
+      id: 44311,
+      title: "Senior Software Engineer, Marketplace Experience",
+      url: "/companies/curri/jobs/lRPDrR6-senior-software-engineer-marketplace-experience",
+      companyName: "Curri",
+      location: "Ventura, CA / Remote (US)",
+      salaryRange: "$185K - $204K",
+      createdAt: "6 months",
+    };
+
+    const jobs = parseYcJobsFromHtmlPages([
+      htmlWithPostings([samplePosting, remotePosting]),
+      htmlWithPostings([remotePosting]),
+    ]);
+
+    expect(jobs.map((job) => job.url)).toEqual([
+      "https://www.ycombinator.com/companies/jiga/jobs/KMtdgpo-full-stack-product-engineer-remote-us",
+      "https://www.ycombinator.com/companies/curri/jobs/lRPDrR6-senior-software-engineer-marketplace-experience",
+    ]);
   });
 });
