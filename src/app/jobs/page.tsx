@@ -8,6 +8,7 @@ import { convexHttp } from "@/lib/convex-http";
 import { sortJobs, type JobSortOption } from "@/lib/job-sort";
 import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
 import { DEFAULT_JOB_LIST_FILTERS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "@/lib/job-list-query";
+import { buildJobListScrollKey, parseSavedScrollY } from "@/lib/job-list-scroll";
 import type { FunctionReturnType } from "convex/server";
 
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
@@ -56,6 +57,16 @@ export default function JobsPage() {
     window.dispatchEvent(new Event(FILTER_CHANGE_EVENT));
   }, [filters]);
 
+  const scrollStorageKey = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    return buildJobListScrollKey(window.location.pathname, urlSearch);
+  }, [urlSearch]);
+
+  const rememberScrollPosition = useCallback(() => {
+    if (!scrollStorageKey) return;
+    window.sessionStorage.setItem(scrollStorageKey, String(window.scrollY));
+  }, [scrollStorageKey]);
+
   const args = useMemo(
     () => ({
       isActive: true,
@@ -78,6 +89,17 @@ export default function JobsPage() {
       cancelled = true;
     };
   }, [args]);
+
+  useEffect(() => {
+    if (!scrollStorageKey || jobs === undefined) return;
+    const savedScrollY = parseSavedScrollY(window.sessionStorage.getItem(scrollStorageKey));
+    if (savedScrollY === undefined) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: savedScrollY, behavior: "instant" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [jobs, scrollStorageKey]);
 
   return (
     <main className="vespoid-shell mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
@@ -127,7 +149,7 @@ export default function JobsPage() {
           </div>
           <div className="neon-divider divide-y divide-white/10">
             {sortedJobs?.map((job) => (
-              <Link key={job._id} href={`/jobs/${job._id}`} className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12">
+              <Link key={job._id} href={`/jobs/${job._id}`} onClick={rememberScrollPosition} className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12">
                 <span className="md:col-span-5">
                   <strong className="block text-fuchsia-50">{job.title}</strong>
                   <span className="text-fuchsia-100/58">{job.company} · {job.location ?? "Unknown"}</span>
