@@ -143,11 +143,15 @@ export const listJobs = query({
     const jobs = await q.order("desc").take(100);
     let filtered = jobs;
 
-    if (args.status) {
-      const apps = await ctx.db
+    const apps = args.status
+      ? await ctx.db
         .query("applications")
         .withIndex("by_status", (idx) => idx.eq("status", args.status!))
-        .take(8192);
+        .take(8192)
+      : await ctx.db.query("applications").take(8192);
+    const applicationsByJobId = new Map(apps.map((application) => [application.jobId, application]));
+
+    if (args.status) {
       const appJobIds = new Set<Id<"jobs">>(apps.map((a) => a.jobId));
       filtered = filtered.filter((j) => appJobIds.has(j._id));
     }
@@ -167,7 +171,9 @@ export const listJobs = query({
       );
     }
 
-    return filtered.sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
+    return filtered
+      .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0))
+      .map((job) => ({ ...job, applicationStatus: applicationsByJobId.get(job._id)?.status }));
   },
 });
 

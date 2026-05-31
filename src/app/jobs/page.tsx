@@ -10,6 +10,7 @@ import { sortJobs, type JobSortOption } from "@/lib/job-sort";
 import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
 import { DEFAULT_JOB_LIST_FILTERS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "@/lib/job-list-query";
 import { buildJobListScrollKey, parseSavedScrollY } from "@/lib/job-list-scroll";
+import { isQuickActionActive, QUICK_TRIAGE_ACTIONS, type QuickTriageStatus } from "@/lib/job-quick-actions";
 import type { FunctionReturnType } from "convex/server";
 
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
@@ -78,7 +79,12 @@ export default function JobsPage() {
     [source, status, remote, search],
   );
   const [jobs, setJobs] = useState<JobList>();
+  const [pendingQuickAction, setPendingQuickAction] = useState<string | null>(null);
   const sortedJobs = useMemo(() => (jobs ? sortJobs(filterJobsByArea(jobs, area), sort) : undefined), [jobs, area, sort]);
+
+  const refreshJobs = useCallback(async () => {
+    setJobs(await convexHttp.query(api.jobs.listJobs, args));
+  }, [args]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +95,17 @@ export default function JobsPage() {
       cancelled = true;
     };
   }, [args]);
+
+  const setQuickStatus = useCallback(async (jobId: JobList[number]["_id"], status: QuickTriageStatus) => {
+    const pendingKey = `${jobId}:${status}`;
+    setPendingQuickAction(pendingKey);
+    try {
+      await convexHttp.mutation(api.applications.setStatus, { jobId, status });
+      await refreshJobs();
+    } finally {
+      setPendingQuickAction(null);
+    }
+  }, [refreshJobs]);
 
   useEffect(() => {
     if (!scrollStorageKey || jobs === undefined) return;
@@ -146,12 +163,12 @@ export default function JobsPage() {
       ) : (
         <section className="neon-panel neon-panel-hot overflow-hidden rounded-2xl">
           <div className="hidden grid-cols-12 gap-3 border-b border-fuchsia-300/14 px-4 py-3 text-xs uppercase tracking-wide text-fuchsia-100/45 md:grid">
-            <span className="col-span-5">Role</span><span className="col-span-2">Source</span><span className="col-span-2">Remote</span><span className="col-span-2">Discovered</span><span className="col-span-1">Live</span>
+            <span className="col-span-4">Role</span><span className="col-span-2">Source</span><span className="col-span-2">Remote</span><span className="col-span-1">Discovered</span><span className="col-span-3">Triage</span>
           </div>
           <div className="neon-divider divide-y divide-white/10">
             {sortedJobs?.map((job) => (
-              <Link key={job._id} href={`/jobs/${job._id}`} onClick={rememberScrollPosition} className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12">
-                <span className="md:col-span-5">
+              <div key={job._id} className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12">
+                <Link href={`/jobs/${job._id}`} onClick={rememberScrollPosition} className="md:col-span-4">
                   <strong className="block text-fuchsia-50">{job.title}</strong>
                   <span className="text-fuchsia-100/58">{job.company} · {job.location ?? "Unknown"}</span>
                   <span className="mt-2 flex flex-wrap items-center gap-2">
@@ -162,12 +179,33 @@ export default function JobsPage() {
                   {job.fitReasons && job.fitReasons.length > 0 ? (
                     <span className="mt-1 block text-xs text-cyan-100/62">Fit {job.fitScore ?? "—"}: {job.fitReasons.slice(0, 3).join(" · ")}</span>
                   ) : null}
-                </span>
+                </Link>
                 <span className="text-cyan-100/78 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Source: </span>{SOURCE_LABELS[job.source] ?? job.source}</span>
                 <span className="text-cyan-100/78 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Remote: </span>{job.remoteStatus ?? "—"}</span>
-                <span className="text-fuchsia-100/58 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Discovered: </span>{formatDate(job.discoveredAt)}</span>
-                <span className="md:col-span-1"><span className="md:hidden text-fuchsia-100/45">Live: </span>{job.isActive ? "✓" : "—"}</span>
-              </Link>
+                <span className="text-fuchsia-100/58 md:col-span-1"><span className="md:hidden text-fuchsia-100/45">Discovered: </span>{formatDate(job.discoveredAt)}</span>
+                <span className="flex flex-wrap gap-2 md:col-span-3" aria-label={`Quick actions for ${job.title} at ${job.company}`}>
+                  {QUICK_TRIAGE_ACTIONS.map((action) => {
+                    const isActive = isQuickActionActive(action.status, job.applicationStatus);
+                    const pendingKey = `${job._id}:${action.status}`;
+                    return (
+                      <button
+                        key={action.status}
+                        type="button"
+                        disabled={pendingQuickAction !== null}
+                        onClick={() => setQuickStatus(job._id, action.status)}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-55 ${
+                          isActive
+                            ? "border-cyan-200/70 bg-cyan-300/20 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.22)]"
+                            : "border-fuchsia-300/20 bg-black/20 text-fuchsia-100/70 hover:border-cyan-200/55 hover:text-cyan-50"
+                        }`}
+                        aria-pressed={isActive}
+                      >
+                        {pendingQuickAction === pendingKey ? "Saving…" : action.label}
+                      </button>
+                    );
+                  })}
+                </span>
+              </div>
             ))}
           </div>
         </section>
