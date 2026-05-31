@@ -46,7 +46,9 @@ const NON_US_REGION =
   /\b(eu|europe|emea|apac|uk|united kingdom|canada|canadian|australia|new zealand|aus\/nz|india|london|paris|montpellier|amsterdam|berlin|zurich|munich|prague|skopje|helsinki|cet|cest)\b|\butc\s*[+-]\s*\d{1,2}\b/i;
 const US_ELIGIBLE_REGION = /\b(us|u\.s\.|usa|u\.s\.a\.|united states|north america|worldwide|global|anywhere)\b/i;
 const NON_JOB = /\b(not hiring|no longer hiring|actively helping|seeking freelancer|seeking work|for hire|contract-to-hire|fractional|consulting only|agency|recruiting agency)\b/i;
-const NON_TARGET_ROLE = /\b(marketer|marketing|sales|account executive|customer success|support engineer|designer|product manager|data scientist|machine learning researcher|security analyst|recruiter|intern\b|internship|student)\b/i;
+const NON_TARGET_ROLE = /\b(marketer|marketing|sales|account executive|customer success|support engineer|design engineer|designer|product manager|data scientist|machine learning researcher|security analyst|recruiter|intern\b|internship|student)\b/i;
+const GROUPED_COMPANY_POST = /\b(multiple roles?|engineering roles?|software engineers|senior\s*\+\s*staff engineers?|engineers? \([^)]*,|various roles?)\b/i;
+const MIXED_ROLE_SEPARATOR = /[,/]|\band\b/i;
 const STAFFING_COMPANY = /\b(robert half|teksystems|kforce|randstad|staffing|recruiting|aquent)\b/i;
 
 function haystack(job: JobFitInput): string {
@@ -121,9 +123,19 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     rejectionReasons.push("not target role");
   }
 
-  if (NON_TARGET_ROLE.test(job.title) && !/engineer|developer/i.test(job.title)) {
+  if (NON_TARGET_ROLE.test(job.title) && (!/engineer|developer/i.test(job.title) || /\bdesign engineer\b/i.test(job.title))) {
     score -= 4;
     rejectionReasons.push("not target role");
+  }
+
+  if (GROUPED_COMPANY_POST.test(job.title)) {
+    score -= 4;
+    rejectionReasons.push("grouped company post");
+  }
+
+  if (NON_TARGET_ROLE.test(job.title) && TARGET_ROLE.test(job.title) && MIXED_ROLE_SEPARATOR.test(job.title)) {
+    score -= 4;
+    rejectionReasons.push("grouped mixed-role post");
   }
 
   if (hasOutsideWorkAuthorizationRestriction(job)) {
@@ -175,6 +187,8 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     !rejectionReasons.includes("not target role") &&
     !rejectionReasons.includes("outside target locations") &&
     !rejectionReasons.includes("outside work authorization") &&
+    !rejectionReasons.includes("grouped company post") &&
+    !rejectionReasons.includes("grouped mixed-role post") &&
     !rejectionReasons.includes("below salary floor");
   return { isRelevant, score: Math.max(0, score), reasons: [...new Set(reasons)], rejectionReasons: [...new Set(rejectionReasons)] };
 }

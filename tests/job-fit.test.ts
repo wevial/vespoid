@@ -106,6 +106,40 @@ describe("target job fit", () => {
 
     expect(fit.isRelevant).toBe(false);
     expect(fit.rejectionReasons).toContain("not target role");
+
+    const designEngineer = classifyJobFit({
+      title: "Design Engineer",
+      company: "DesignCo",
+      remoteStatus: "Remote US",
+      description: "Design systems, marketing pages, and frontend polish with React and TypeScript.",
+    });
+
+    expect(designEngineer.isRelevant).toBe(false);
+    expect(designEngineer.rejectionReasons).toContain("not target role");
+  });
+
+  test("rejects grouped company posts that mix target engineering roles with non-target roles", () => {
+    const fit = classifyJobFit({
+      title: "Data Engineer, Full Stack Engineers (Sr & Staff/Lead), Sr. Product Manager",
+      company: "COVU",
+      remoteStatus: "San Francisco (hybrid) or remote (US)",
+      description: "AI platform using React, TypeScript, Python, Go, and internal tools.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("grouped mixed-role post");
+  });
+
+  test("rejects generic multi-role company posts until roles are split into individual listings", () => {
+    const fit = classifyJobFit({
+      title: "Multiple Roles",
+      company: "Instinct Science",
+      remoteStatus: "Remote US",
+      description: "Hiring frontend engineers, product managers, and designers for a TypeScript React AI platform.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("grouped company post");
   });
 
   test("rejects remote roles restricted to EU or Canada because US work eligibility is not assumed", () => {

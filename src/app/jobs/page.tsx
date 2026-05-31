@@ -6,6 +6,7 @@ import { api } from "../../../convex/_generated/api";
 import { SOURCE_LABELS, STATUS_LABELS, type ApplicationStatus } from "@/lib/status";
 import { convexHttp } from "@/lib/convex-http";
 import { sortJobs, type JobSortOption } from "@/lib/job-sort";
+import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
 import type { FunctionReturnType } from "convex/server";
 
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
@@ -27,6 +28,7 @@ export default function JobsPage() {
   const [remote, setRemote] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<JobSortOption>("fit");
+  const [area, setArea] = useState<JobAreaFilter>("all");
 
   const args = useMemo(
     () => ({
@@ -39,7 +41,7 @@ export default function JobsPage() {
     [source, status, remote, search],
   );
   const [jobs, setJobs] = useState<JobList>();
-  const sortedJobs = useMemo(() => (jobs ? sortJobs(jobs, sort) : undefined), [jobs, sort]);
+  const sortedJobs = useMemo(() => (jobs ? sortJobs(filterJobsByArea(jobs, area), sort) : undefined), [jobs, area, sort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +63,7 @@ export default function JobsPage() {
         </div>
       </header>
 
-      <section className="neon-panel grid gap-3 rounded-2xl p-4 md:grid-cols-5">
+      <section className="neon-panel grid gap-3 rounded-2xl p-4 md:grid-cols-6">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title/company/description" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
         <select value={source} onChange={(e) => setSource(e.target.value as typeof source)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
           <option value="">All sources</option>
@@ -71,6 +73,14 @@ export default function JobsPage() {
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none">
           <option value="">Any status</option>
           {(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((key) => <option key={key} value={key}>{STATUS_LABELS[key]}</option>)}
+        </select>
+        <select value={area} onChange={(e) => setArea(e.target.value as JobAreaFilter)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Filter by area">
+          <option value="all">Area: all</option>
+          <option value="remote">Area: remote</option>
+          <option value="sf-bay">Area: SF Bay</option>
+          <option value="seattle">Area: Seattle</option>
+          <option value="denver-boulder">Area: Denver/Boulder</option>
+          <option value="spain">Area: Spain maybe</option>
         </select>
         <input value={remote} onChange={(e) => setRemote(e.target.value)} placeholder="remote / hybrid / onsite" className="neon-input rounded-xl px-3 py-2 text-sm outline-none" />
         <select value={sort} onChange={(e) => setSort(e.target.value as JobSortOption)} className="neon-input rounded-xl px-3 py-2 text-sm outline-none" aria-label="Sort jobs">
