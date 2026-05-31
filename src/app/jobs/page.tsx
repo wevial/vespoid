@@ -14,6 +14,12 @@ function formatDate(value?: string) {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
+function formatSalaryPreview(value?: string) {
+  if (!value) return "Unknown";
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 72 ? `${normalized.slice(0, 69)}…` : normalized;
+}
+
 export default function JobsPage() {
   const [source, setSource] = useState<"" | "hn" | "wellfound">("");
   const [status, setStatus] = useState<"" | ApplicationStatus>("");
@@ -72,23 +78,28 @@ export default function JobsPage() {
         <div className="neon-panel rounded-2xl p-8 text-fuchsia-100/62">No jobs match these filters.</div>
       ) : (
         <section className="neon-panel neon-panel-hot overflow-hidden rounded-2xl">
-          <div className="grid grid-cols-12 gap-3 border-b border-fuchsia-300/14 px-4 py-3 text-xs uppercase tracking-wide text-fuchsia-100/45">
+          <div className="hidden grid-cols-12 gap-3 border-b border-fuchsia-300/14 px-4 py-3 text-xs uppercase tracking-wide text-fuchsia-100/45 md:grid">
             <span className="col-span-5">Role</span><span className="col-span-2">Source</span><span className="col-span-2">Remote</span><span className="col-span-2">Discovered</span><span className="col-span-1">Live</span>
           </div>
           <div className="neon-divider divide-y divide-white/10">
             {jobs.map((job) => (
-              <Link key={job._id} href={`/jobs/${job._id}`} className="neon-row grid grid-cols-12 gap-3 px-4 py-4 text-sm">
-                <span className="col-span-5">
+              <Link key={job._id} href={`/jobs/${job._id}`} className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12">
+                <span className="md:col-span-5">
                   <strong className="block text-fuchsia-50">{job.title}</strong>
                   <span className="text-fuchsia-100/58">{job.company} · {job.location ?? "Unknown"}</span>
+                  <span className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2.5 py-1 text-xs font-medium text-fuchsia-50 shadow-[0_0_18px_rgba(217,70,239,0.16)]">
+                      Salary: {formatSalaryPreview(job.salaryRange)}
+                    </span>
+                  </span>
                   {job.fitReasons && job.fitReasons.length > 0 ? (
                     <span className="mt-1 block text-xs text-cyan-100/62">Fit {job.fitScore ?? "—"}: {job.fitReasons.slice(0, 3).join(" · ")}</span>
                   ) : null}
                 </span>
-                <span className="col-span-2 text-cyan-100/78">{SOURCE_LABELS[job.source] ?? job.source}</span>
-                <span className="col-span-2 text-cyan-100/78">{job.remoteStatus ?? "—"}</span>
-                <span className="col-span-2 text-fuchsia-100/58">{formatDate(job.discoveredAt)}</span>
-                <span className="col-span-1">{job.isActive ? "✓" : "—"}</span>
+                <span className="text-cyan-100/78 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Source: </span>{SOURCE_LABELS[job.source] ?? job.source}</span>
+                <span className="text-cyan-100/78 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Remote: </span>{job.remoteStatus ?? "—"}</span>
+                <span className="text-fuchsia-100/58 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Discovered: </span>{formatDate(job.discoveredAt)}</span>
+                <span className="md:col-span-1"><span className="md:hidden text-fuchsia-100/45">Live: </span>{job.isActive ? "✓" : "—"}</span>
               </Link>
             ))}
           </div>
