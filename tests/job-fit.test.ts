@@ -260,6 +260,30 @@ describe("target job fit", () => {
     expect(fit.reasons).toContain("possible Spain eligibility");
   });
 
+  test("boosts Seattle and Washington roles above otherwise similar non-WA target locations", () => {
+    const seattleFit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Cascade Devtools",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$180k - $220k",
+      description: "React, TypeScript, Python, and AI developer tools.",
+    });
+    const sfFit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Bay Devtools",
+      location: "San Francisco, CA",
+      remoteStatus: "hybrid",
+      salaryRange: "$180k - $220k",
+      description: "React, TypeScript, Python, and AI developer tools.",
+    });
+
+    expect(seattleFit.isRelevant).toBe(true);
+    expect(sfFit.isRelevant).toBe(true);
+    expect(seattleFit.score).toBeGreaterThan(sfFit.score);
+    expect(seattleFit.reasons).toContain("Seattle/WA preference");
+  });
+
   test("applies compensation floors by location while allowing missing salary", () => {
     expect(classifyJobFit({
       title: "Senior Frontend Engineer",

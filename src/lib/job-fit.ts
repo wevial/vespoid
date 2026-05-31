@@ -28,6 +28,7 @@ const TARGET_DOMAIN =
 const SENIORITY = /\b(senior|staff|lead|principal|founding|founder|architect|8\+? years|7\+? years|experienced)\b/i;
 const TARGET_METRO =
   /\b(seattle|bellevue|redmond|san francisco|sf\b|bay area|palo alto|mountain view|sunnyvale|san mateo|san jose|oakland|berkeley|denver|boulder)\b/i;
+const WASHINGTON_PREFERRED = /\b(seattle|bellevue|redmond|kirkland|washington state|wa\b)\b/i;
 const DENVER_METRO = /\b(denver|boulder)\b/i;
 const SPAIN = /\b(spain|madrid|barcelona)\b/i;
 const REMOTE = /\b(remote|distributed|work from anywhere|wfh)\b/i;
@@ -103,6 +104,10 @@ function salaryFloor(job: JobFitInput): number {
   return DENVER_METRO.test(text) ? 150000 : 170000;
 }
 
+function hasWashingtonPreference(job: JobFitInput): boolean {
+  return WASHINGTON_PREFERRED.test([job.location, job.remoteStatus].filter(Boolean).join(" "));
+}
+
 export function classifyJobFit(job: JobFitInput): JobFit {
   const text = haystack(job);
   const lowerCompany = job.company.toLowerCase();
@@ -149,6 +154,10 @@ export function classifyJobFit(job: JobFitInput): JobFit {
   if (isTargetLocation(job.location, job.remoteStatus, job.description)) {
     score += 3;
     reasons.push("target location");
+    if (hasWashingtonPreference(job)) {
+      score += 2;
+      reasons.push("Seattle/WA preference");
+    }
     if (SPAIN.test(text) && !TARGET_METRO.test(text)) {
       score -= 1;
       reasons.push("possible Spain eligibility");
