@@ -11,6 +11,7 @@ import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
 import { DEFAULT_JOB_LIST_FILTERS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "@/lib/job-list-query";
 import { buildJobListScrollKey, parseSavedScrollY } from "@/lib/job-list-scroll";
 import { isQuickActionActive, QUICK_TRIAGE_ACTIONS, type QuickTriageStatus } from "@/lib/job-quick-actions";
+import { nextPreviewJobId, selectedPreviewJob } from "@/lib/job-preview-panel";
 import type { FunctionReturnType } from "convex/server";
 
 type JobList = FunctionReturnType<typeof api.jobs.listJobs>;
@@ -80,7 +81,9 @@ export default function JobsPage() {
   );
   const [jobs, setJobs] = useState<JobList>();
   const [pendingQuickAction, setPendingQuickAction] = useState<string | null>(null);
+  const [previewJobId, setPreviewJobId] = useState<string | undefined>();
   const sortedJobs = useMemo(() => (jobs ? sortJobs(filterJobsByArea(jobs, area), sort) : undefined), [jobs, area, sort]);
+  const previewJob = useMemo(() => selectedPreviewJob(sortedJobs, previewJobId), [sortedJobs, previewJobId]);
 
   const refreshJobs = useCallback(async () => {
     setJobs(await convexHttp.query(api.jobs.listJobs, args));
@@ -106,6 +109,11 @@ export default function JobsPage() {
       setPendingQuickAction(null);
     }
   }, [refreshJobs]);
+
+  const togglePreview = useCallback((jobId: string) => {
+    setPreviewJobId((current) => nextPreviewJobId(current, jobId));
+  }, []);
+
 
   useEffect(() => {
     if (!scrollStorageKey || jobs === undefined) return;
@@ -182,7 +190,22 @@ export default function JobsPage() {
                     <span className="mt-1 block text-xs text-cyan-100/62">Fit {job.fitScore ?? "—"}: {job.fitReasons.slice(0, 3).join(" · ")}</span>
                   ) : null}
                 </Link>
-                <span className="text-cyan-100/78 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Source: </span>{SOURCE_LABELS[job.source] ?? job.source}</span>
+                <div className="flex items-start gap-2 md:col-span-2">
+                  <span className="text-cyan-100/78"><span className="md:hidden text-fuchsia-100/45">Source: </span>{SOURCE_LABELS[job.source] ?? job.source}</span>
+                  <button
+                    type="button"
+                    onClick={() => togglePreview(job._id)}
+                    className={`hidden rounded-full border px-3 py-1 text-xs font-semibold transition lg:inline-flex ${
+                      previewJob?._id === job._id
+                        ? "border-cyan-200/70 bg-cyan-300/20 text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.22)]"
+                        : "border-fuchsia-300/20 bg-black/20 text-fuchsia-100/70 hover:border-cyan-200/55 hover:text-cyan-50"
+                    }`}
+                    aria-expanded={previewJob?._id === job._id}
+                    aria-controls="job-preview-panel"
+                  >
+                    {previewJob?._id === job._id ? "Hide" : "Preview"}
+                  </button>
+                </div>
                 <span className="text-cyan-100/78 md:col-span-2"><span className="md:hidden text-fuchsia-100/45">Remote: </span>{job.remoteStatus ?? "—"}</span>
                 <span className="text-fuchsia-100/58 md:col-span-1"><span className="md:hidden text-fuchsia-100/45">Discovered: </span>{formatDate(job.discoveredAt)}</span>
                 <span className="flex flex-wrap gap-2 md:col-span-3" aria-label={`Quick actions for ${job.title} at ${job.company}`}>
@@ -212,6 +235,71 @@ export default function JobsPage() {
           </div>
         </section>
       )}
+
+      <aside
+        id="job-preview-panel"
+        aria-label="Job listing preview"
+        className={`fixed bottom-0 right-0 top-0 z-40 hidden w-[min(520px,42vw)] transform border-l border-cyan-300/20 bg-[#080615]/95 shadow-[0_0_42px_rgba(34,211,238,0.24)] backdrop-blur-xl transition-transform duration-300 lg:block ${
+          previewJob ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        {previewJob ? (
+          <div className="flex h-full flex-col">
+            <div className="border-b border-fuchsia-300/14 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="neon-eyebrow text-xs uppercase tracking-[0.25em]">{SOURCE_LABELS[previewJob.source] ?? previewJob.source}</p>
+                  <h2 className="neon-heading mt-2 text-xl font-semibold leading-tight">{previewJob.title}</h2>
+                  <p className="mt-2 text-sm text-fuchsia-100/70">{previewJob.company} · {previewJob.location ?? "Unknown"}</p>
+                </div>
+                <button type="button" onClick={() => setPreviewJobId(undefined)} className="neon-ghost rounded-full px-3 py-1 text-sm" aria-label="Close preview panel">
+                  Close
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href={`/jobs/${previewJob._id}`} onClick={rememberScrollPosition} className="neon-button rounded-full px-4 py-2 text-xs font-semibold">
+                  Full page →
+                </Link>
+                <a href={previewJob.url} target="_blank" rel="noopener noreferrer" className="neon-ghost rounded-full px-4 py-2 text-xs font-semibold">
+                  Original ↗
+                </a>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              <dl className="grid gap-3 rounded-2xl border border-cyan-300/12 bg-black/24 p-4 text-sm sm:grid-cols-2">
+                <div><dt className="text-xs text-fuchsia-100/45">Remote</dt><dd className="text-cyan-50">{previewJob.remoteStatus ?? "Unknown"}</dd></div>
+                <div><dt className="text-xs text-fuchsia-100/45">Salary</dt><dd className="text-cyan-50">{previewJob.salaryRange ?? "Unknown"}</dd></div>
+                <div><dt className="text-xs text-fuchsia-100/45">Fit score</dt><dd className="text-cyan-50">{previewJob.fitScore ?? "Unknown"}</dd></div>
+                <div><dt className="text-xs text-fuchsia-100/45">Discovered</dt><dd className="text-cyan-50">{formatDate(previewJob.discoveredAt)}</dd></div>
+              </dl>
+
+              {previewJob.fitReasons && previewJob.fitReasons.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {previewJob.fitReasons.map((reason) => (
+                    <span key={reason} className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs text-cyan-100">
+                      {reason}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-5 whitespace-pre-wrap rounded-2xl border border-cyan-300/12 bg-black/24 p-4 text-sm leading-6 text-fuchsia-100/78">
+                {previewJob.description ?? "No description captured."}
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-cyan-300/12 bg-black/24 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-fuchsia-50">Embedded listing</h3>
+                  <a className="text-xs text-cyan-200 hover:text-fuchsia-200" href={previewJob.url} target="_blank" rel="noopener noreferrer">Open ↗</a>
+                </div>
+                <iframe src={previewJob.url} title={`${previewJob.title} preview`} sandbox="allow-scripts" className="h-[420px] w-full rounded-xl border border-cyan-300/12 bg-white" />
+                <p className="mt-2 text-xs text-fuchsia-100/45">Some job sites block iframe previews; use Original or Full page if blank.</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </aside>
     </main>
   );
 }
