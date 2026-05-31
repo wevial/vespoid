@@ -29,12 +29,12 @@ describe("target job fit", () => {
     expect(isTargetLocation("Berlin, Germany", "onsite")).toBe(false);
   });
 
-  test("keeps remote roles even when headquarters are outside target metros", () => {
+  test("keeps US-eligible remote roles even when headquarters are outside target metros", () => {
     const fit = classifyJobFit({
       title: "Full Stack Engineer",
       company: "InfraKit",
       location: "Berlin, Germany",
-      remoteStatus: "remote",
+      remoteStatus: "remote US",
       description: "Remote team building dev tools in React and Go.",
     });
 
@@ -106,6 +106,110 @@ describe("target job fit", () => {
 
     expect(fit.isRelevant).toBe(false);
     expect(fit.rejectionReasons).toContain("not target role");
+  });
+
+  test("rejects remote roles restricted to EU or Canada because US work eligibility is not assumed", () => {
+    const euOnly = classifyJobFit({
+      title: "Senior Full Stack Engineer",
+      company: "EuroDevTools",
+      remoteStatus: "Remote EU only",
+      description: "Build AI developer tools with TypeScript and React. Remote Europe only.",
+    });
+
+    expect(euOnly.isRelevant).toBe(false);
+    expect(euOnly.rejectionReasons).toContain("outside work authorization");
+
+    const emeaApac = classifyJobFit({
+      title: "Senior Python Backend Engineer",
+      company: "RegionLocked",
+      remoteStatus: "Remote EMEA/APAC",
+      description: "AI platform work with Python and React.",
+    });
+
+    expect(emeaApac.isRelevant).toBe(false);
+    expect(emeaApac.rejectionReasons).toContain("outside work authorization");
+
+    const europeTimezone = classifyJobFit({
+      title: "Senior Backend Engineer",
+      company: "EuroTimezone",
+      remoteStatus: "Hybrid London, Paris, Montpellier or remote UTC-1 to UTC+2",
+      description: "Developer tools with TypeScript, React, and Python.",
+    });
+
+    expect(europeTimezone.isRelevant).toBe(false);
+    expect(europeTimezone.rejectionReasons).toContain("outside work authorization");
+
+    const cestTimezone = classifyJobFit({
+      title: "Flutter mobile engineer, Software Engineer",
+      company: "CETCo",
+      remoteStatus: "Remote within 2/3 hrs timezone of CEST",
+      description: "Product engineering with React Native, TypeScript, and AI features.",
+    });
+
+    expect(cestTimezone.isRelevant).toBe(false);
+    expect(cestTimezone.rejectionReasons).toContain("outside work authorization");
+
+    const canadaOnly = classifyJobFit({
+      title: "Product Engineer",
+      company: "NorthStack",
+      remoteStatus: "Remote Canada only",
+      description: "React, TypeScript, and Python product work.",
+    });
+
+    expect(canadaOnly.isRelevant).toBe(false);
+    expect(canadaOnly.rejectionReasons).toContain("outside work authorization");
+  });
+
+  test("keeps remote roles that explicitly include the US even if they also include other regions", () => {
+    const fit = classifyJobFit({
+      title: "Staff Software Engineer, AI",
+      company: "GlobalHealth",
+      remoteStatus: "Remote US / Canada / Europe",
+      description: "AI product engineering with TypeScript, React, and Python. $190k-$220k.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.rejectionReasons).not.toContain("outside work authorization");
+  });
+
+  test("treats Spain-only roles as possible but uncertain instead of standard EU eligible", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Madrid AI Tools",
+      location: "Madrid, Spain",
+      remoteStatus: "Hybrid Spain",
+      description: "TypeScript, React, Python, and AI product work.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.reasons).toContain("possible Spain eligibility");
+  });
+
+  test("applies compensation floors by location while allowing missing salary", () => {
+    expect(classifyJobFit({
+      title: "Senior Frontend Engineer",
+      company: "Bay Tools",
+      location: "San Francisco",
+      remoteStatus: "hybrid",
+      salaryRange: "$140k - $165k",
+      description: "React, TypeScript, and AI developer tools.",
+    }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Senior Full Stack Engineer",
+      company: "Denver Tools",
+      location: "Denver, CO",
+      remoteStatus: "hybrid",
+      salaryRange: "$150k - $165k",
+      description: "React, TypeScript, Go, and developer tools.",
+    }).isRelevant).toBe(true);
+
+    expect(classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Remote AI",
+      remoteStatus: "Remote US",
+      description: "React, TypeScript, Python, and AI product work. Compensation not listed.",
+    }).isRelevant).toBe(true);
   });
 
   test("parses compact salary ranges", () => {
