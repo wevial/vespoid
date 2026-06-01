@@ -21,6 +21,22 @@ describe("target job fit", () => {
     expect(fit.reasons).toContain("salary target");
   });
 
+  test("keeps generalist engineering roles at target devtool companies when the post is engineering-specific", () => {
+    const fit = classifyJobFit({
+      title: "Generalist Engineer",
+      company: "Greptile",
+      location: "San Francisco",
+      remoteStatus: "onsite",
+      salaryRange: "$170K – $210K",
+      description:
+        "Department: Engineering\nBuild AI code-review agents for pull requests with TypeScript, React, and product engineering work.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.reasons).toContain("generalist engineering role");
+    expect(fit.rejectionReasons).not.toContain("not target role");
+  });
+
   test("keeps hybrid/in-office roles only in target metro areas", () => {
     expect(isTargetLocation("San Francisco, CA", "onsite")).toBe(true);
     expect(isTargetLocation("Seattle", "hybrid")).toBe(true);

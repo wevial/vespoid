@@ -1,4 +1,6 @@
+import { JSDOM } from "jsdom";
 import { dedupeAtsJobs, mapAshbyJob, mapGreenhouseJob, mapLeverPosting, type AtsJobListing } from "../src/lib/ats-jobs";
+import { classifyJobFit } from "../src/lib/job-fit";
 
 export interface CompanyBoardConfig {
   slug: string;
@@ -25,6 +27,11 @@ export const CURATED_COMPANY_BOARDS: CompanyBoardConfig[] = [
   { provider: "greenhouse", slug: "tailscale", company: "Tailscale" },
 ];
 
+const GREPTILE_CAREER_URLS = [
+  "https://www.greptile.com/careers/generalist-engineer",
+  "https://www.greptile.com/careers/frontend-engineer",
+];
+
 async function fetchJson(url: string): Promise<unknown> {
   const response = await fetch(url, {
     headers: {
@@ -34,6 +41,91 @@ async function fetchJson(url: string): Promise<unknown> {
   });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
+}
+
+async function fetchText(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+      Accept: "text/html,application/xhtml+xml,*/*",
+    },
+  });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.text();
+}
+
+function textAfterLabel(text: string, label: string): string | undefined {
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const index = lines.findIndex((line) => line.toLowerCase() === label.toLowerCase());
+  return index >= 0 ? lines[index + 1] : undefined;
+}
+
+function metadataValue(document: Document, text: string, label: string): string | undefined {
+  for (const term of document.querySelectorAll("dt")) {
+    if (term.textContent?.trim().toLowerCase() === label.toLowerCase()) {
+      const sibling = term.nextElementSibling;
+      if (sibling?.tagName.toLowerCase() === "dd") return sibling.textContent?.trim() || undefined;
+    }
+  }
+  const lineValue = textAfterLabel(text, label);
+  if (lineValue) return lineValue;
+
+  const compactLabels = ["Location", "Employment Type", "Location Type", "Department", "Compensation"];
+  const labelIndex = compactLabels.findIndex((candidate) => candidate.toLowerCase() === label.toLowerCase());
+  const nextLabels = compactLabels.slice(labelIndex + 1).map((candidate) => candidate.replace(/\s+/g, "\\s*"));
+  const terminator = nextLabels.length > 0 ? `(?:${nextLabels.join("|")})` : "$";
+  const match = text.match(new RegExp(`${label.replace(/\s+/g, "\\s*")}(.+?)${terminator}`, "is"));
+  return match?.[1]?.trim() || undefined;
+}
+
+function normalizedRemoteStatus(locationType?: string): string | undefined {
+  if (!locationType) return undefined;
+  if (/on[-\s]?site/i.test(locationType)) return "onsite";
+  if (/hybrid/i.test(locationType)) return "hybrid";
+  if (/remote/i.test(locationType)) return "remote";
+  return undefined;
+}
+
+export function mapGreptileCareerPage(url: string, html: string): AtsJobListing | undefined {
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  document.querySelectorAll("script").forEach((element) => element.remove());
+  const text = document.body.textContent?.replace(/\s*\n\s*/g, "\n").replace(/[ \t]+/g, " ").trim() ?? "";
+  const title =
+    document.querySelector("h1")?.textContent?.trim() ??
+    document.title.replace(/\s*-\s*Careers at Greptile\s*$/i, "").trim();
+  const location = metadataValue(document, text, "Location");
+  const locationType = metadataValue(document, text, "Location Type");
+  const department = metadataValue(document, text, "Department");
+  const salaryRange = metadataValue(document, text, "Compensation")?.split(title)[0]?.trim();
+  if (!title || !location) return undefined;
+
+  const candidate = {
+    url,
+    title,
+    company: "Greptile",
+    source: "company_board" as const,
+    description: [department ? `Department: ${department}` : undefined, salaryRange ? `Compensation: ${salaryRange}` : undefined, text]
+      .filter((line): line is string => Boolean(line))
+      .join("\n"),
+    salaryRange,
+    location,
+    remoteStatus: normalizedRemoteStatus(locationType),
+  };
+  const fit = classifyJobFit(candidate);
+  if (!fit.isRelevant) return undefined;
+  return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
+}
+
+async function scrapeGreptileCareers(): Promise<AtsJobListing[]> {
+  const settled = await Promise.allSettled(
+    GREPTILE_CAREER_URLS.map(async (url) => mapGreptileCareerPage(url, await fetchText(url))),
+  );
+  return settled.flatMap((result, index) => {
+    if (result.status === "fulfilled") return result.value ? [result.value] : [];
+    console.warn(`Skipped greptile-careers:${GREPTILE_CAREER_URLS[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+    return [];
+  });
 }
 
 async function scrapeAshby(config: CompanyBoardConfig): Promise<AtsJobListing[]> {
@@ -76,6 +168,7 @@ export async function scrapeCompanyBoards(configs = CURATED_COMPANY_BOARDS): Pro
       console.warn(`Skipped ${config.provider}:${config.slug}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
     }
   });
+  jobs.push(...await scrapeGreptileCareers());
   return dedupeAtsJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
 }
 

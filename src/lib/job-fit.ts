@@ -21,10 +21,11 @@ export interface JobFit {
 
 const TARGET_ROLE =
   /\b(product engineer|full[-\s]?stack|frontend|front[-\s]?end|software engineer|founding engineer|product[-\s]?minded engineer|web engineer|typescript engineer|react engineer|ai engineer)\b/i;
+const GENERALIST_ENGINEERING_ROLE = /\bgeneralist engineer\b/i;
 const TARGET_STACK =
   /\b(type\s*script|javascript|react|next\.?js|node\.?js|go|golang|python|fastapi|django|frontend|front[-\s]?end|web app|full[-\s]?stack)\b/i;
 const TARGET_DOMAIN =
-  /\b(ai|llm|agent|developer tool|devtool|dev tools|infrastructure|platform|api|sdk|workflow|automation|internal tools|data platform)\b/i;
+  /\b(ai|llm|agent|developer tool|devtool|dev tools|code review|code reviewer|pull requests?|infrastructure|platform|api|sdk|workflow|automation|internal tools|data platform)\b/i;
 const SENIORITY = /\b(senior|staff|lead|principal|founding|founder|architect|8\+? years|7\+? years|experienced)\b/i;
 const TARGET_METRO =
   /\b(seattle|bellevue|redmond|san francisco|sf\b|bay area|palo alto|mountain view|sunnyvale|san mateo|san jose|oakland|berkeley|denver|boulder)\b/i;
@@ -122,6 +123,9 @@ export function classifyJobFit(job: JobFitInput): JobFit {
   if (TARGET_ROLE.test(job.title)) {
     score += 4;
     reasons.push("target role");
+  } else if (GENERALIST_ENGINEERING_ROLE.test(job.title) && /\bengineering\b/i.test(text) && TARGET_DOMAIN.test(text)) {
+    score += 3;
+    reasons.push("generalist engineering role");
   } else if (TARGET_STACK.test(job.title) && /\bengineer|developer|programmer\b/i.test(job.title)) {
     score += 2;
     reasons.push("engineering role with target stack");
