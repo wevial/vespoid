@@ -1,16 +1,18 @@
 import { dedupeAtsJobs, mapAshbyJob, mapGreenhouseJob, mapLeverPosting, type AtsJobListing } from "../src/lib/ats-jobs";
 
-interface CompanyBoardConfig {
+export interface CompanyBoardConfig {
   slug: string;
   company?: string;
   provider: "ashby" | "lever" | "greenhouse";
 }
 
-const CURATED_COMPANY_BOARDS: CompanyBoardConfig[] = [
+export const CURATED_COMPANY_BOARDS: CompanyBoardConfig[] = [
   { provider: "ashby", slug: "linear", company: "Linear" },
   { provider: "greenhouse", slug: "vercel", company: "Vercel" },
   { provider: "ashby", slug: "supabase", company: "Supabase" },
   { provider: "greenhouse", slug: "anthropic", company: "Anthropic" },
+  { provider: "ashby", slug: "openai", company: "OpenAI" },
+  { provider: "ashby", slug: "greptile", company: "Greptile" },
   { provider: "ashby", slug: "cursor", company: "Cursor" },
   { provider: "ashby", slug: "modal", company: "Modal" },
   { provider: "ashby", slug: "warp", company: "Warp" },
