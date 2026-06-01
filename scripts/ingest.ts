@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import { isJobSource, type JobSource } from "../src/lib/job-sources";
+import { parseIngestOptions, shouldMarkStale } from "../src/lib/ingest-options";
 
 const CONVEX_URL = process.env.CONVEX_URL;
 if (!CONVEX_URL) {
@@ -44,6 +45,7 @@ function isSafeHttpsUrl(value: unknown): value is string {
 }
 
 const client = new ConvexHttpClient(CONVEX_URL);
+const ingestOptions = parseIngestOptions(Bun.argv.slice(2));
 let input = "";
 process.stdin.on("data", (chunk) => (input += chunk));
 interface RawJob {
@@ -113,12 +115,14 @@ process.stdin.on("end", async () => {
       }
     }
 
-    const staleIds = activeBefore
-      .filter((job) => {
-        const sourceUrls = currentUrlsBySource.get(job.source);
-        return sourceUrls !== undefined && !sourceUrls.has(job.url);
-      })
-      .map((job) => job._id);
+    const staleIds = shouldMarkStale(ingestOptions)
+      ? activeBefore
+        .filter((job) => {
+          const sourceUrls = currentUrlsBySource.get(job.source);
+          return sourceUrls !== undefined && !sourceUrls.has(job.url);
+        })
+        .map((job) => job._id)
+      : [];
     if (staleIds.length > 0) {
       await client.mutation(api.jobs.markStaleBatch, { jobIds: staleIds });
     }
