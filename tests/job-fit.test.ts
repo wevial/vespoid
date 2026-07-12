@@ -21,6 +21,19 @@ describe("target job fit", () => {
     expect(fit.reasons).toContain("salary target");
   });
 
+  test("does not reject high-agency startup descriptions as agency recruiters", () => {
+    const fit = classifyJobFit({
+      title: "Full Stack Engineer",
+      company: "Macroscope",
+      location: "San Francisco",
+      description:
+        "Build AI developer tools with TypeScript, React, Python, workflows, and APIs. You are extremely high agency in a small startup.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.rejectionReasons).not.toContain("not a direct job post");
+  });
+
   test("keeps generalist engineering roles at target devtool companies when the post is engineering-specific", () => {
     const fit = classifyJobFit({
       title: "Generalist Engineer",
@@ -56,6 +69,36 @@ describe("target job fit", () => {
 
     expect(fit.isRelevant).toBe(true);
     expect(fit.reasons).toContain("target location");
+  });
+
+  test("rejects remote roles restricted to non-US cities unless explicitly US eligible", () => {
+    for (const location of ["Toronto", "Ottawa", "Montreal", "Singapore", "Abu Dhabi", "France (Remote)"]) {
+      const fit = classifyJobFit({
+        title: "Senior Software Engineer",
+        company: "AI Co",
+        location,
+        remoteStatus: "remote",
+        salaryRange: "$190K - $230K",
+        description: "Build AI developer tools with Python, React, TypeScript, and agents.",
+      });
+      expect(fit.isRelevant).toBe(false);
+      expect(fit.rejectionReasons).toContain("outside work authorization");
+    }
+  });
+
+  test("rejects blacklisted companies", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Palantir",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$200K - $250K",
+      description: "Build AI developer tools with TypeScript, React, and Python.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.score).toBe(0);
+    expect(fit.rejectionReasons).toContain("blacklisted company");
   });
 
   test("rejects non-job comments and freelancer ads", () => {
@@ -152,6 +195,88 @@ describe("target job fit", () => {
 
     expect(intern.isRelevant).toBe(false);
     expect(intern.rejectionReasons).toContain("not target role");
+  });
+
+  test("rejects mobile-platform specialist roles", () => {
+    for (const title of [
+      "Staff Software Engineer, iOS",
+      "Senior Software Engineer, Android (Kotlin)",
+      "Member of Technical Staff (iOS Software Engineer, Comet)",
+      "Senior Software Engineer, React Native",
+    ]) {
+      const fit = classifyJobFit({
+        title,
+        company: "MobileCo",
+        location: "Seattle, WA",
+        remoteStatus: "hybrid",
+        salaryRange: "$190K - $240K",
+        description: "Build product experiences with TypeScript, React, Kotlin, Swift, and AI platform integrations.",
+      });
+
+      expect(fit.isRelevant).toBe(false);
+      expect(fit.rejectionReasons).toContain("mobile specialist role");
+    }
+  });
+
+  test("rejects backend/distributed-systems, devops, and embedded-heavy specialist roles", () => {
+    const inference = classifyJobFit({
+      title: "Staff + Senior Software Engineer, Inference",
+      company: "Anthropic",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$320K - $485K",
+      description:
+        "Build distributed systems for model serving, request routing, load balancing, autoscaling, Kubernetes, accelerators, and multi-region inference infrastructure.",
+    });
+    expect(inference.isRelevant).toBe(false);
+    expect(inference.rejectionReasons).toContain("backend/infrastructure specialist role");
+
+    const connectivity = classifyJobFit({
+      title: "Connectivity Software Engineer, Consumer Devices",
+      company: "OpenAI",
+      location: "San Francisco",
+      remoteStatus: "hybrid",
+      salaryRange: "$293K - $325K",
+      description: "Own Bluetooth, BLE, Wi-Fi, wireless connectivity, embedded device networking, and hardware integration.",
+    });
+    expect(connectivity.isRelevant).toBe(false);
+    expect(connectivity.rejectionReasons).toContain("embedded/hardware specialist role");
+
+    const cdn = classifyJobFit({
+      title: "Sr. Software Engineer, CDN (Starlink)",
+      company: "SpaceX",
+      location: "Redmond, WA",
+      remoteStatus: "onsite",
+      salaryRange: "$180K - $220K",
+      description:
+        "Build CDN, content delivery, edge networking, packet routing, global traffic management, and low-latency distributed systems for Starlink.",
+    });
+    expect(cdn.isRelevant).toBe(false);
+    expect(cdn.rejectionReasons).toContain("backend/infrastructure specialist role");
+  });
+
+  test("keeps product/full-stack roles even when they mention APIs or infrastructure incidentally", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "DevtoolCo",
+      location: "Remote US",
+      salaryRange: "$190K - $230K",
+      description:
+        "Build user-facing AI workflow products with React, TypeScript, Next.js, Node APIs, SDKs, and developer experience polish.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.rejectionReasons).not.toContain("backend/infrastructure specialist role");
+    const embeddedInPeopleOrg = classifyJobFit({
+      title: "Software Engineer, Full Stack (People Innovation)",
+      company: "OpenAI",
+      location: "Remote - US",
+      remoteStatus: "remote",
+      salaryRange: "$153K – $385K",
+      description: "A fast-moving engineering team embedded in the People organization. Build recruiting tools with JavaScript, React, Python, Postgres, and AI automations.",
+    });
+    expect(embeddedInPeopleOrg.isRelevant).toBe(true);
+    expect(embeddedInPeopleOrg.rejectionReasons).not.toContain("embedded/hardware specialist role");
   });
 
   test("rejects grouped company posts that mix target engineering roles with non-target roles", () => {
@@ -274,6 +399,28 @@ describe("target job fit", () => {
 
     expect(fit.isRelevant).toBe(true);
     expect(fit.reasons).toContain("possible Spain eligibility");
+  });
+
+  test("calls out roles with very senior experience expectations", () => {
+    const staffPlus = classifyJobFit({
+      title: "Staff+ Software Engineer, Developer Productivity",
+      company: "Anthropic",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      description: "Build developer infrastructure with TypeScript and Python. Strong candidates may have 15+ years of experience in a Software Engineer role.",
+    });
+    const explicitYears = classifyJobFit({
+      title: "Model Performance Software Engineer, Claude Code",
+      company: "Anthropic",
+      location: "San Francisco, CA",
+      remoteStatus: "hybrid",
+      description: "Build Claude Code infrastructure with TypeScript and Python. Have 10+ years of software engineering experience with Staff or Principal engineer scope.",
+    });
+
+    expect(staffPlus.isRelevant).toBe(true);
+    expect(staffPlus.reasons).toContain("very senior expectations");
+    expect(explicitYears.isRelevant).toBe(true);
+    expect(explicitYears.reasons).toContain("very senior expectations");
   });
 
   test("boosts Seattle and Washington roles above otherwise similar non-WA target locations", () => {

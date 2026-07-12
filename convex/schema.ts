@@ -11,6 +11,12 @@ export const statusValidator = v.union(
   v.literal("archived"),
 );
 
+export const availabilityStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("closed"),
+  v.literal("unknown"),
+);
+
 export const sourceValidator = v.union(
   v.literal("hn"),
   v.literal("wellfound"),
@@ -35,11 +41,20 @@ export default defineSchema({
     discoveredAt: v.string(),
     isActive: v.boolean(),
     lastCheckedAt: v.optional(v.string()),
+    availabilityStatus: v.optional(availabilityStatusValidator),
+    availabilityCheckedAt: v.optional(v.string()),
+    availabilityReason: v.optional(v.string()),
   })
     .index("by_url", ["url"])
     .index("by_source", ["source", "discoveredAt"])
     .index("by_active", ["isActive", "discoveredAt"])
     .index("by_source_active", ["source", "isActive", "discoveredAt"]),
+
+  jobDescriptions: defineTable({
+    jobId: v.id("jobs"),
+    description: v.string(),
+    updatedAt: v.string(),
+  }).index("by_job", ["jobId"]),
 
   applications: defineTable({
     jobId: v.id("jobs"),

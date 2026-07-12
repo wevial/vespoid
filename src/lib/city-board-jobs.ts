@@ -44,9 +44,10 @@ function absoluteBuiltinUrl(value: string) {
 
 function remoteStatusFromText(...parts: Array<string | undefined>) {
   const text = parts.filter(Boolean).join(" ");
+  if (/\b(remote\s+or\s+hybrid|hybrid\s+or\s+remote|hybrid|\d\+?\s+days?\s+(?:in\s+the\s+office|in-office|onsite|on-site)|days?\/week\s+onsite)\b/i.test(text)) return "hybrid";
+  if (/\b(exclusively\s+based|expected\s+in\s+office|based\s+in\s+our\s+[^.]*office|based\s+out\s+of\s+[^.]*office|onsite|on-site)\b/i.test(text)) return "onsite";
   if (/\b(remote|distributed|work from anywhere)\b/i.test(text)) return "remote";
-  if (/\bhybrid\b/i.test(text)) return "hybrid";
-  if (/\b(onsite|on-site|office)\b/i.test(text)) return "onsite";
+  if (/\boffice\b/i.test(text)) return "onsite";
   return undefined;
 }
 

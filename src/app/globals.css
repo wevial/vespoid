@@ -1,13 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #080313;
-  --foreground: #f8eaff;
-  --neon-pink: #ff4fd8;
-  --neon-violet: #8b5cf6;
-  --neon-blue: #22d3ee;
-  --panel-bg: rgba(15, 9, 32, 0.72);
-  --panel-border: rgba(255, 120, 221, 0.2);
+  --background: #05070d;
+  --foreground: #edf4ff;
+  --hermes-blue: #0a66ff;
+  --hermes-blue-soft: #7fb0ff;
+  --hermes-orange: #ff9f0a;
+  --ink: #05070d;
+  --panel-bg: rgba(7, 12, 22, 0.82);
+  --panel-border: rgba(113, 159, 255, 0.28);
+  --panel-border-hot: rgba(255, 159, 10, 0.48);
 }
 
 @theme inline {
@@ -30,10 +32,13 @@ body {
   min-height: 100vh;
   margin: 0;
   background:
-    radial-gradient(circle at 14% 8%, rgba(255, 79, 216, 0.5), transparent 26%),
-    radial-gradient(circle at 82% 4%, rgba(34, 211, 238, 0.42), transparent 30%),
-    radial-gradient(circle at 52% 44%, rgba(139, 92, 246, 0.34), transparent 38%),
-    linear-gradient(135deg, #090416 0%, #17072d 45%, #061526 100%);
+    linear-gradient(rgba(127, 176, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(127, 176, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 18% 8%, rgba(10, 102, 255, 0.26), transparent 28%),
+    radial-gradient(circle at 82% 0%, rgba(255, 159, 10, 0.12), transparent 26%),
+    radial-gradient(circle at 50% 48%, rgba(127, 176, 255, 0.08), transparent 42%),
+    linear-gradient(135deg, #03050a 0%, #081120 44%, #03060c 100%);
+  background-size: 42px 42px, 42px 42px, auto, auto, auto, auto;
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   overflow-x: hidden;
@@ -46,21 +51,22 @@ body::before {
   z-index: -1;
   content: "";
   background:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 78%);
+    repeating-linear-gradient(0deg, rgba(237, 244, 255, 0.035) 0 1px, transparent 1px 5px),
+    radial-gradient(ellipse at center, rgba(237, 244, 255, 0.08), transparent 62%);
+  mix-blend-mode: screen;
+  opacity: 0.45;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.92), transparent 82%);
 }
 
 body::after {
   pointer-events: none;
   position: fixed;
-  inset: auto -10% -22% -10%;
+  inset: auto -12% -24% -12%;
   z-index: -1;
   height: 42vh;
   content: "";
-  background: radial-gradient(ellipse at center, rgba(255, 79, 216, 0.34), rgba(34, 211, 238, 0.12) 45%, transparent 70%);
-  filter: blur(42px);
+  background: radial-gradient(ellipse at center, rgba(10, 102, 255, 0.22), rgba(255, 159, 10, 0.08) 44%, transparent 72%);
+  filter: blur(48px);
 }
 
 a {
@@ -69,7 +75,7 @@ a {
 }
 
 ::selection {
-  background: rgba(255, 79, 216, 0.36);
+  background: rgba(10, 102, 255, 0.42);
   color: white;
 }
 
@@ -81,106 +87,127 @@ a {
   .vespoid-shell::before {
     pointer-events: none;
     position: absolute;
-    inset: 1.5rem 0 auto 50%;
+    inset: 1.25rem 0 auto 50%;
     z-index: -1;
     height: 18rem;
-    width: min(42rem, 80vw);
+    width: min(54rem, 88vw);
     transform: translateX(-50%);
     border-radius: 9999px;
     content: "";
-    background: linear-gradient(90deg, rgba(255, 79, 216, 0.32), rgba(139, 92, 246, 0.26), rgba(34, 211, 238, 0.28));
-    filter: blur(54px);
+    background: linear-gradient(90deg, rgba(10, 102, 255, 0.26), rgba(127, 176, 255, 0.12), rgba(255, 159, 10, 0.13));
+    filter: blur(62px);
   }
 
   .neon-panel {
+    position: relative;
     border: 1px solid var(--panel-border);
     background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.035)),
+      linear-gradient(180deg, rgba(237, 244, 255, 0.085), rgba(237, 244, 255, 0.022)),
       var(--panel-bg);
     box-shadow:
-      0 0 0 1px rgba(34, 211, 238, 0.06) inset,
-      0 20px 80px rgba(10, 4, 30, 0.55),
-      0 0 48px rgba(139, 92, 246, 0.13);
+      0 0 0 1px rgba(10, 102, 255, 0.09) inset,
+      0 22px 70px rgba(0, 0, 0, 0.46);
     backdrop-filter: blur(18px);
   }
 
+  .neon-panel::before {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    content: "";
+    background:
+      linear-gradient(90deg, rgba(127, 176, 255, 0.08) 1px, transparent 1px),
+      linear-gradient(rgba(127, 176, 255, 0.055) 1px, transparent 1px);
+    background-size: 36px 36px;
+    opacity: 0.22;
+    mask-image: linear-gradient(to bottom, black, transparent 88%);
+  }
+
+  .neon-panel > * {
+    position: relative;
+  }
+
   .neon-panel-hot {
-    border-color: rgba(255, 79, 216, 0.34);
+    border-color: var(--panel-border-hot);
     box-shadow:
-      0 0 0 1px rgba(34, 211, 238, 0.08) inset,
-      0 24px 90px rgba(6, 8, 32, 0.62),
-      0 0 68px rgba(255, 79, 216, 0.2);
+      0 0 0 1px rgba(255, 159, 10, 0.12) inset,
+      0 24px 88px rgba(0, 0, 0, 0.58),
+      0 0 54px rgba(10, 102, 255, 0.13);
   }
 
   .neon-button {
-    background: linear-gradient(90deg, #ff4fd8, #8b5cf6 48%, #22d3ee);
-    box-shadow: 0 0 28px rgba(255, 79, 216, 0.36), 0 0 42px rgba(34, 211, 238, 0.18);
-    color: white;
+    border: 1px solid rgba(255, 159, 10, 0.72);
+    background:
+      linear-gradient(90deg, rgba(255, 159, 10, 0.95), rgba(10, 102, 255, 0.95)),
+      #0a66ff;
+    box-shadow: 0 0 0 1px rgba(237, 244, 255, 0.18) inset, 0 0 26px rgba(10, 102, 255, 0.28);
+    color: #ffffff;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
   }
 
   .neon-button:hover {
     transform: translateY(-1px);
-    filter: saturate(1.15);
-    box-shadow: 0 0 36px rgba(255, 79, 216, 0.52), 0 0 54px rgba(34, 211, 238, 0.28);
+    filter: saturate(1.08) brightness(1.06);
+    box-shadow: 0 0 0 1px rgba(237, 244, 255, 0.24) inset, 0 0 34px rgba(255, 159, 10, 0.22), 0 0 42px rgba(10, 102, 255, 0.28);
   }
 
   .neon-ghost {
-    border: 1px solid rgba(255, 255, 255, 0.13);
-    background: rgba(9, 4, 22, 0.48);
-    color: #f5d7ff;
+    border: 1px solid rgba(127, 176, 255, 0.28);
+    background: rgba(5, 7, 13, 0.66);
+    color: #d8e7ff;
+    letter-spacing: 0.04em;
     transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
   }
 
   .neon-ghost:hover {
-    border-color: rgba(34, 211, 238, 0.75);
-    background: rgba(34, 211, 238, 0.09);
-    box-shadow: 0 0 24px rgba(34, 211, 238, 0.2);
-    color: #c8fbff;
+    border-color: rgba(255, 159, 10, 0.82);
+    background: rgba(255, 159, 10, 0.08);
+    box-shadow: 0 0 22px rgba(10, 102, 255, 0.2);
+    color: #fff4db;
   }
 
   .neon-input {
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(4, 2, 15, 0.66);
-    color: #f9eaff;
-    box-shadow: 0 0 0 1px rgba(255, 79, 216, 0.04) inset;
+    border: 1px solid rgba(127, 176, 255, 0.28);
+    background: rgba(3, 5, 10, 0.82);
+    color: #edf4ff;
+    box-shadow: 0 0 0 1px rgba(10, 102, 255, 0.06) inset;
   }
 
   .neon-input::placeholder {
-    color: rgba(248, 234, 255, 0.42);
+    color: rgba(216, 231, 255, 0.42);
   }
 
   .neon-input:focus {
-    border-color: rgba(255, 79, 216, 0.78);
-    box-shadow: 0 0 0 3px rgba(255, 79, 216, 0.16), 0 0 26px rgba(139, 92, 246, 0.24);
+    border-color: rgba(10, 102, 255, 0.86);
+    box-shadow: 0 0 0 3px rgba(10, 102, 255, 0.18), 0 0 24px rgba(10, 102, 255, 0.22);
   }
 
   .neon-heading {
-    background: linear-gradient(90deg, #ffffff, #ffd6f8 34%, #bcdcff 72%, #9ff7ff);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    text-shadow: 0 0 42px rgba(255, 79, 216, 0.22);
+    color: #edf4ff;
+    font-family: var(--font-geist-mono), var(--font-geist-sans), monospace;
+    letter-spacing: -0.075em;
+    text-shadow: 0 0 36px rgba(10, 102, 255, 0.34);
   }
 
   .neon-eyebrow {
-    background: linear-gradient(90deg, #ff4fd8, #c084fc, #22d3ee);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    text-shadow: 0 0 26px rgba(255, 79, 216, 0.42);
+    color: var(--hermes-orange);
+    font-family: var(--font-geist-mono), var(--font-geist-sans), monospace;
+    letter-spacing: 0.34em;
+    text-shadow: 0 0 26px rgba(255, 159, 10, 0.32);
   }
 
   .neon-divider > * + * {
-    border-top-color: rgba(255, 255, 255, 0.08);
+    border-top-color: rgba(127, 176, 255, 0.13);
   }
 
   .neon-row {
-    transition: background 140ms ease, box-shadow 140ms ease;
+    transition: background 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
   }
 
   .neon-row:hover {
-    background: linear-gradient(90deg, rgba(255, 79, 216, 0.08), rgba(34, 211, 238, 0.06));
-    box-shadow: 0 0 34px rgba(139, 92, 246, 0.12) inset;
+    background: linear-gradient(90deg, rgba(10, 102, 255, 0.11), rgba(255, 159, 10, 0.045));
+    box-shadow: 0 0 0 1px rgba(255, 159, 10, 0.12) inset;
   }
 }

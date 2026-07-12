@@ -28,6 +28,49 @@ describe("ATS company-board mapping", () => {
     expect(job?.fitReasons).toContain("target role");
   });
 
+  test("does not label hybrid, office-required, or city-only postings as broadly remote", () => {
+    const hybrid = mapAshbyJob(
+      "openai",
+      {
+        title: "Software Engineer, Product",
+        location: "Seattle",
+        department: "Engineering",
+        jobUrl: "https://jobs.ashbyhq.com/openai/hybrid",
+        descriptionPlain: "Build TypeScript and React product systems. This role uses a hybrid work model of 3 days in the office per week. Salary $230K - $385K.",
+        compensation: { compensationTierSummary: "$230K - $385K" },
+      },
+      "OpenAI",
+    );
+    const onsite = mapAshbyJob(
+      "openai",
+      {
+        title: "Software Engineer, Ads Manager",
+        location: "Seattle",
+        department: "Engineering",
+        jobUrl: "https://jobs.ashbyhq.com/openai/onsite",
+        descriptionPlain: "Build TypeScript and React product systems. This role is exclusively based in our Seattle office. We offer relocation assistance. Salary $230K - $385K.",
+        compensation: { compensationTierSummary: "$230K - $385K" },
+      },
+      "OpenAI",
+    );
+    const cityOnly = mapAshbyJob(
+      "openai",
+      {
+        title: "Software Engineer, Codex App",
+        location: "San Francisco",
+        department: "Engineering",
+        jobUrl: "https://jobs.ashbyhq.com/openai/sf",
+        descriptionPlain: "Build TypeScript and React product systems. Collaborate with remote teams. Salary $230K - $385K.",
+        compensation: { compensationTierSummary: "$230K - $385K" },
+      },
+      "OpenAI",
+    );
+
+    expect(hybrid?.remoteStatus).toBe("hybrid");
+    expect(onsite?.remoteStatus).toBe("onsite");
+    expect(cityOnly?.remoteStatus).toBeUndefined();
+  });
+
   test("maps a target Lever posting and filters unrelated roles", () => {
     const target = mapLeverPosting("vercel", {
       text: "Senior Frontend Engineer, AI SDK",
@@ -63,5 +106,64 @@ describe("ATS company-board mapping", () => {
       company: "Supabase",
       remoteStatus: "remote",
     });
+  });
+
+  test("decodes Greenhouse escaped HTML content before storing descriptions", () => {
+    const job = mapGreenhouseJob("anthropic", {
+      title: "Staff Software Engineer, AI Reliability",
+      absolute_url: "https://job-boards.greenhouse.io/anthropic/jobs/5113224008",
+      location: { name: "San Francisco, CA | New York City, NY | Seattle, WA" },
+      content: "&lt;div class=&quot;content-intro&quot;&gt;&lt;h2&gt;&lt;strong&gt;About Anthropic&lt;/strong&gt;&lt;/h2&gt;&lt;p&gt;Build safe AI systems with TypeScript, React, and APIs. Salary $220K - $300K.&lt;/p&gt;&lt;/div&gt;",
+      departments: [{ name: "Software Engineering - Infrastructure" }],
+    });
+
+    expect(job?.description).toContain("About Anthropic");
+    expect(job?.description).toContain("Build safe AI systems");
+    expect(job?.description).not.toContain("&lt;");
+    expect(job?.description).not.toContain("<div");
+  });
+
+  test("maps Seattle-area Greenhouse and Lever board slugs to readable company names", () => {
+    const gradial = mapGreenhouseJob("gradial", {
+      title: "Product Engineer (UX/UI)",
+      absolute_url: "https://job-boards.greenhouse.io/gradial/jobs/4006977009",
+      location: { name: "Seattle, WA" },
+      content: "Build AI workflow products with TypeScript, React, APIs, and product engineering.",
+      departments: [{ name: "Engineering" }],
+    });
+    const spice = mapLeverPosting("spiceai", {
+      text: "Forward Deployed Engineer (Rust)",
+      hostedUrl: "https://jobs.lever.co/spiceai/example",
+      categories: { team: "Engineering", location: "Seattle, WA", commitment: "Full-time" },
+      descriptionPlain: "Deploy AI data products, workflows, APIs, and developer tools with Python and TypeScript.",
+      lists: [],
+    });
+
+    expect(gradial?.company).toBe("Gradial");
+    expect(spice?.company).toBe("Spice AI");
+  });
+
+  test("maps SpaceX Greenhouse software postings while keeping specialist filters active", () => {
+    const productishSpaceJob = mapGreenhouseJob("spacex", {
+      title: "Software Engineer, Starlink Web Platforms",
+      absolute_url: "https://boards.greenhouse.io/spacex/jobs/123",
+      location: { name: "Redmond, WA" },
+      content: "Build TypeScript, React, and API-backed workflow tools for satellite operations and Starlink customers. Salary $180k-$220k.",
+      departments: [{ name: "Engineering" }],
+    });
+    const embeddedSpaceJob = mapGreenhouseJob("spacex", {
+      title: "Embedded Software Engineer, Flight Hardware",
+      absolute_url: "https://boards.greenhouse.io/spacex/jobs/456",
+      location: { name: "Redmond, WA" },
+      content: "Develop firmware, device drivers, embedded software, wireless connectivity, and hardware interfaces for spacecraft avionics.",
+      departments: [{ name: "Engineering" }],
+    });
+
+    expect(productishSpaceJob).toMatchObject({
+      company: "SpaceX",
+      source: "company_board",
+    });
+    expect(productishSpaceJob?.fitReasons).toContain("target domain");
+    expect(embeddedSpaceJob).toBeUndefined();
   });
 });

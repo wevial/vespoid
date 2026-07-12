@@ -25,6 +25,21 @@ describe("city-specific board mapping", () => {
     expect(job?.fitReasons).toContain("Seattle/WA preference");
   });
 
+  test("keeps Remote or Hybrid Built In cards from looking purely remote", () => {
+    const job = mapBuiltinJobCard(
+      {
+        title: "Staff Backend Product Software Engineer",
+        company: "Philo",
+        location: "Remote - United States",
+        url: "/job/staff-backend-product-software-engineer/555",
+        description: "Remote or Hybrid San Francisco, CA, USA. Build TypeScript and Python APIs for product infrastructure. $180K - $235K.",
+      },
+      "remote",
+    );
+
+    expect(job?.remoteStatus).toBe("hybrid");
+  });
+
   test("filters city-board jobs outside the target role", () => {
     const job = mapBuiltinJobCard(
       {

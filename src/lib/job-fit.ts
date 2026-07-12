@@ -20,13 +20,14 @@ export interface JobFit {
 }
 
 const TARGET_ROLE =
-  /\b(product engineer|full[-\s]?stack|frontend|front[-\s]?end|software engineer|founding engineer|product[-\s]?minded engineer|web engineer|typescript engineer|react engineer|ai engineer)\b/i;
+  /\b(product engineer|full[-\s]?stack|frontend|front[-\s]?end|software engineer|founding engineer|forward deployed engineer|product[-\s]?minded engineer|web engineer|typescript engineer|react engineer|ai engineer)\b/i;
 const GENERALIST_ENGINEERING_ROLE = /\bgeneralist engineer\b/i;
 const TARGET_STACK =
   /\b(type\s*script|javascript|react|next\.?js|node\.?js|go|golang|python|fastapi|django|frontend|front[-\s]?end|web app|full[-\s]?stack)\b/i;
 const TARGET_DOMAIN =
-  /\b(ai|llm|agent|developer tool|devtool|dev tools|code review|code reviewer|pull requests?|infrastructure|platform|api|sdk|workflow|automation|internal tools|data platform)\b/i;
+  /\b(ai|llm|agent|developer tool|devtool|dev tools|code review|code reviewer|pull requests?|infrastructure|platform|api|sdk|workflow|automation|internal tools|data platform|space|aerospace|satellite|satellites|spacecraft|rocket|rockets|starship|starlink)\b/i;
 const SENIORITY = /\b(senior|staff|lead|principal|founding|founder|architect|8\+? years|7\+? years|experienced)\b/i;
+const VERY_SENIOR_EXPECTATIONS = /\b(senior\s+staff|staff\+|principal|1[0-9]\+?\s*(?:years|yrs)|[2-9][0-9]\+?\s*(?:years|yrs))\b/i;
 const TARGET_METRO =
   /\b(seattle|bellevue|redmond|san francisco|sf\b|bay area|palo alto|mountain view|sunnyvale|san mateo|san jose|oakland|berkeley|denver|boulder)\b/i;
 const WASHINGTON_PREFERRED = /\b(seattle|bellevue|redmond|kirkland|washington state|wa\b)\b/i;
@@ -45,13 +46,28 @@ const OUTSIDE_US_AUTHORIZATION = new RegExp(
   "i",
 );
 const NON_US_REGION =
-  /\b(eu|europe|emea|apac|uk|united kingdom|canada|canadian|australia|new zealand|aus\/nz|india|london|paris|montpellier|amsterdam|berlin|zurich|munich|prague|skopje|helsinki|cet|cest)\b|\butc\s*[+-]\s*\d{1,2}\b/i;
+  /\b(eu|europe|emea|apac|uk|united kingdom|canada|canadian|australia|new zealand|aus\/nz|india|france|singapore|abu dhabi|montreal|toronto|ottawa|london|paris|montpellier|amsterdam|berlin|zurich|munich|prague|skopje|helsinki|cet|cest)\b|\butc\s*[+-]\s*\d{1,2}\b/i;
 const US_ELIGIBLE_REGION = /\b(us|u\.s\.|usa|u\.s\.a\.|united states|north america|worldwide|global|anywhere)\b/i;
-const NON_JOB = /\b(not hiring|no longer hiring|actively helping|seeking freelancer|seeking work|for hire|contract-to-hire|fractional|consulting only|agency|recruiting agency)\b/i;
+const NON_JOB = /\b(not hiring|no longer hiring|actively helping|seeking freelancer|seeking work|for hire|contract-to-hire|fractional|consulting only|staffing agency|recruiting agency)\b/i;
 const NON_TARGET_ROLE = /\b(marketer|marketing|sales|account executive|customer success|support engineer|design engineer|designer|product manager|data scientist|machine learning researcher|security analyst|recruiter|intern\b|internship|student)\b/i;
+const MOBILE_PLATFORM_ROLE = /\b(ios|android|mobile|react native|swift|kotlin)\b/i;
+const EMBEDDED_HARDWARE_ROLE = /\b(embedded(?!\s+in\b)|firmware|kernel|device driver|connectivity|bluetooth|ble\b|wi[-\s]?fi|wireless|consumer devices?|hardware[-\s]?in[-\s]?the[-\s]?loop|flight software|rf software|avionics|power systems controls?|control systems?|hardware accelerators?|accelerator platforms?)\b/i;
+const INFRA_BACKEND_TITLE = /\b(backend|back[-\s]?end|infrastructure|platform|kubernetes|devops|site reliability|sre|security|inference|database|data platform|storage|network|networking|connectivity|cdn|edge infrastructure|edge networking|content delivery)\b/i;
+const PRODUCT_FACING_WORK = /\b(product engineer|product[-\s]?minded|full[-\s]?stack|frontend|front[-\s]?end|web app|user[-\s]?facing|customer[-\s]?facing|product surface|growth|gtm|internal tools|workflow|developer experience|devtools?|sdk|api product)\b/i;
+const DOMAIN_HEAVY_SYSTEMS_PATTERNS = [
+  /\bdistributed systems?\b/i,
+  /\b(kubernetes|k8s|terraform|devops|site reliability|sre|on[-\s]?call|incident response)\b/i,
+  /\b(infrastructure|platform engineering|cloud infrastructure|fleet|orchestration|autoscaling)\b/i,
+  /\b(cdn|content delivery|edge infrastructure|edge networking|edge caching|traffic routing|global traffic|internet traffic|packet|packets)\b/i,
+  /\b(high[-\s]?qps|p9[59]|tail latency|low latency|high performance computing|multi[-\s]?region|load balancing|request routing|traffic management)\b/i,
+  /\b(databases?|storage backends?|caching|cdc|consistency|failover|indexing|retrieval)\b/i,
+  /\b(inference infrastructure|model serving|accelerators?|gpu|tpu|hardware[-\s]?agnostic)\b/i,
+  /\b(microservices?|backend systems?|data[-\s]?intensive)\b/i,
+];
 const GROUPED_COMPANY_POST = /\b(multiple roles?|engineering roles?|software engineers|senior\s*\+\s*staff engineers?|engineers? \([^)]*,|various roles?)\b/i;
 const MIXED_ROLE_SEPARATOR = /[,/]|\band\b/i;
 const STAFFING_COMPANY = /\b(robert half|teksystems|kforce|randstad|staffing|recruiting|aquent)\b/i;
+const BLACKLISTED_COMPANY = /\b(palantir)\b/i;
 
 function haystack(job: JobFitInput): string {
   return [job.title, job.company, job.location, job.remoteStatus, job.salaryRange, job.description].filter(Boolean).join("\n");
@@ -109,12 +125,20 @@ function hasWashingtonPreference(job: JobFitInput): boolean {
   return WASHINGTON_PREFERRED.test([job.location, job.remoteStatus].filter(Boolean).join(" "));
 }
 
+function systemsDomainBurden(text: string): number {
+  return DOMAIN_HEAVY_SYSTEMS_PATTERNS.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+}
+
 export function classifyJobFit(job: JobFitInput): JobFit {
   const text = haystack(job);
   const lowerCompany = job.company.toLowerCase();
   const reasons: string[] = [];
   const rejectionReasons: string[] = [];
   let score = 0;
+
+  if (BLACKLISTED_COMPANY.test(lowerCompany)) {
+    return { isRelevant: false, score: 0, reasons, rejectionReasons: ["blacklisted company"] };
+  }
 
   if (NON_JOB.test(text) || STAFFING_COMPANY.test(lowerCompany)) {
     return { isRelevant: false, score: 0, reasons, rejectionReasons: ["not a direct job post"] };
@@ -141,6 +165,26 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     rejectionReasons.push("not target role");
   }
 
+  if (MOBILE_PLATFORM_ROLE.test(job.title)) {
+    score -= 6;
+    rejectionReasons.push("mobile specialist role");
+  }
+
+  if (EMBEDDED_HARDWARE_ROLE.test([job.title, job.description].filter(Boolean).join(" "))) {
+    score -= 8;
+    rejectionReasons.push("embedded/hardware specialist role");
+  }
+
+  const systemsBurden = systemsDomainBurden(text);
+  const productFacing = PRODUCT_FACING_WORK.test([job.title, job.description].filter(Boolean).join(" "));
+  if ((INFRA_BACKEND_TITLE.test(job.title) && systemsBurden >= 2) || (systemsBurden >= 4 && !productFacing)) {
+    score -= 6;
+    rejectionReasons.push("backend/infrastructure specialist role");
+  } else if (systemsBurden >= 3) {
+    score -= 3;
+    reasons.push("backend/infrastructure-heavy role");
+  }
+
   if (GROUPED_COMPANY_POST.test(job.title)) {
     score -= 4;
     rejectionReasons.push("grouped company post");
@@ -153,6 +197,11 @@ export function classifyJobFit(job: JobFitInput): JobFit {
 
   if (hasOutsideWorkAuthorizationRestriction(job)) {
     rejectionReasons.push("outside work authorization");
+  }
+
+  if (VERY_SENIOR_EXPECTATIONS.test(text)) {
+    score -= 1;
+    reasons.push("very senior expectations");
   }
 
   if (isTargetLocation(job.location, job.remoteStatus, job.description)) {
@@ -206,6 +255,9 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     !rejectionReasons.includes("outside work authorization") &&
     !rejectionReasons.includes("grouped company post") &&
     !rejectionReasons.includes("grouped mixed-role post") &&
-    !rejectionReasons.includes("below salary floor");
+    !rejectionReasons.includes("below salary floor") &&
+    !rejectionReasons.includes("mobile specialist role") &&
+    !rejectionReasons.includes("embedded/hardware specialist role") &&
+    !rejectionReasons.includes("backend/infrastructure specialist role");
   return { isRelevant, score: Math.max(0, score), reasons: [...new Set(reasons)], rejectionReasons: [...new Set(rejectionReasons)] };
 }

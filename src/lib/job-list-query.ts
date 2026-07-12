@@ -1,11 +1,14 @@
 import type { ApplicationStatus } from "./status";
+import { STATUS_LABELS } from "./status";
 import type { JobSource } from "./job-sources";
 import type { JobAreaFilter } from "./job-area";
 import type { JobSortOption } from "./job-sort";
 
+export type JobListStatusFilter = "" | "unread" | ApplicationStatus;
+
 export interface JobListFilters {
   source: "" | JobSource;
-  status: "" | ApplicationStatus;
+  status: JobListStatusFilter;
   remote: string;
   search: string;
   sort: JobSortOption;
@@ -22,9 +25,14 @@ export const DEFAULT_JOB_LIST_FILTERS: JobListFilters = {
 };
 
 const VALID_SOURCES = new Set(["", "hn", "wellfound", "yc", "company_board", "city_board"]);
-const VALID_STATUSES = new Set(["", "saved", "applied", "screen", "interview", "offer", "rejected", "archived"]);
+const VALID_STATUSES = new Set(["", "unread", "saved", "applied", "screen", "interview", "offer", "rejected", "archived"]);
 const VALID_SORTS = new Set(["fit", "date-desc", "salary-desc"]);
 const VALID_AREAS = new Set(["all", "remote", "sf-bay", "seattle", "denver-boulder", "spain"]);
+
+export const JOB_LIST_STATUS_FILTER_OPTIONS: Array<{ value: Exclude<JobListStatusFilter, "">; label: string }> = [
+  { value: "unread", label: "Unread" },
+  ...(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((status) => ({ value: status, label: STATUS_LABELS[status] })),
+];
 
 function oneOf<T extends string>(value: string | null, valid: Set<string>, fallback: T): T {
   return valid.has(value ?? "") ? (value as T) : fallback;

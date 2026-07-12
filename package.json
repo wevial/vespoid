@@ -16,6 +16,7 @@
     "scrape:wellfound": "bun run scripts/scrape-wellfound.ts",
     "ingest": "bun run scripts/ingest.ts",
     "check:stale": "bun run scripts/check-stale.ts",
+    "check:availability": "bun run scripts/check-saved-availability.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

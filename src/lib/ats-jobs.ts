@@ -53,13 +53,27 @@ const COMPANY_NAMES: Record<string, string> = {
   anthropic: "Anthropic",
   ashby: "Ashby",
   cursor: "Cursor",
+  echodynecorp: "Echodyne",
+  huggingface: "Hugging Face",
   linear: "Linear",
+  gradial: "Gradial",
+  highspot: "Highspot",
+  leveltenenergy: "LevelTen Energy",
   modal: "Modal",
+  phaidra: "Phaidra",
   perplexity: "Perplexity",
+  pulumicorporation: "Pulumi",
   replit: "Replit",
+  sentry: "Sentry",
+  seekout: "SeekOut",
+  spiceai: "Spice AI",
+  spacex: "SpaceX",
   supabase: "Supabase",
+  togetherai: "Together AI",
+  truveta: "Truveta",
   vercel: "Vercel",
   warp: "Warp",
+  xai: "xAI",
 };
 
 function titleCaseSlug(slug: string) {
@@ -78,16 +92,45 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function htmlToText(value?: string) {
-  if (!value) return "";
-  return new JSDOM(value).window.document.body.textContent?.replace(/\s+/g, " ").trim() ?? "";
+function decodeHtmlEntities(value: string) {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"',
+  };
+  return value
+    .replace(/&#(\d+);/g, (_match, codepoint: string) => String.fromCodePoint(Number(codepoint)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, codepoint: string) => String.fromCodePoint(Number.parseInt(codepoint, 16)))
+    .replace(/&([a-z]+);/gi, (match, entity: string) => namedEntities[entity.toLowerCase()] ?? match);
 }
 
-function remoteStatusFromText(...parts: Array<string | undefined>) {
-  const text = parts.filter(Boolean).join(" ");
-  if (/\b(remote|distributed|work from anywhere)\b/i.test(text)) return "remote";
-  if (/\bhybrid\b/i.test(text)) return "hybrid";
-  if (/\b(onsite|on-site|office)\b/i.test(text)) return "onsite";
+function htmlToText(value?: string) {
+  if (!value) return "";
+  return decodeHtmlEntities(
+    decodeHtmlEntities(value)
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, " ")
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+      .replace(/<br\s*\/?\s*>/gi, "\n")
+      .replace(/<\/(?:p|div|li|h[1-6]|tr|section|article)>/gi, "\n")
+      .replace(/<[^>]+>/g, " "),
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function remoteStatusFromText(location?: string, ...descriptionParts: Array<string | undefined>) {
+  const explicitLocation = location ?? "";
+  const descriptionText = descriptionParts.filter(Boolean).join(" ");
+  const fullText = [explicitLocation, descriptionText].filter(Boolean).join(" ");
+
+  if (/\b(remote\s+or\s+hybrid|hybrid\s+or\s+remote|hybrid|\d\+?\s+days?\s+(?:in\s+the\s+office|in-office|onsite|on-site)|days?\/week\s+onsite)\b/i.test(fullText)) return "hybrid";
+  if (/\b(exclusively\s+based|expected\s+in\s+office|based\s+in\s+our\s+[^.]*office|based\s+out\s+of\s+[^.]*office|onsite|on-site)\b/i.test(fullText)) return "onsite";
+  if (/\b(remote|distributed|work from anywhere)\b/i.test(explicitLocation)) return "remote";
+  if (/\b(fully\s+remote|remote[-\s]+first|remote\s+(?:role|position|team)|work\s+remotely|distributed\s+team|work from anywhere)\b/i.test(descriptionText)) return "remote";
+  if (/\boffice\b/i.test(fullText)) return "onsite";
   return undefined;
 }
 

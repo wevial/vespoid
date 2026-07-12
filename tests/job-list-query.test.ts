@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_JOB_LIST_FILTERS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "../src/lib/job-list-query";
+import { DEFAULT_JOB_LIST_FILTERS, JOB_LIST_STATUS_FILTER_OPTIONS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "../src/lib/job-list-query";
 
 describe("job list URL query state", () => {
   test("round-trips non-default filters so browser back restores listing state", () => {
@@ -37,5 +37,16 @@ describe("job list URL query state", () => {
     expect(jobListFiltersFromSearchParams(new URLSearchParams("source=yc")).source).toBe("yc");
     expect(jobListFiltersFromSearchParams(new URLSearchParams("source=company_board")).source).toBe("company_board");
     expect(jobListFiltersFromSearchParams(new URLSearchParams("source=city_board")).source).toBe("city_board");
+  });
+
+  test("accepts unread as a status filter option", () => {
+    const query = jobListFiltersToSearchParams({
+      ...DEFAULT_JOB_LIST_FILTERS,
+      status: "unread",
+    });
+
+    expect(query.toString()).toBe("status=unread");
+    expect(jobListFiltersFromSearchParams(query).status).toBe("unread");
+    expect(JOB_LIST_STATUS_FILTER_OPTIONS[0]).toEqual({ value: "unread", label: "Unread" });
   });
 });
