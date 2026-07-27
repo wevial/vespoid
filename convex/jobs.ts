@@ -1,10 +1,27 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { action, internalQuery, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { sourceValidator, statusValidator, availabilityStatusValidator } from "./schema";
 import { applyPreferenceSignals, type PreferenceFeedback } from "./jobPreferenceScore";
+import { matchesJobArea, type JobAreaFilter } from "../src/lib/job-area";
+import { scanFilteredActionPage } from "../src/lib/job-list-pagination";
+
+const jobAreaValidator = v.union(
+  v.literal("all"),
+  v.literal("remote"),
+  v.literal("sf-bay"),
+  v.literal("seattle"),
+  v.literal("denver-boulder"),
+  v.literal("spain"),
+);
+// Keep post-filter pagination bounded: at most 1,600 raw rows per request.
+// The action scans up to 64 batches of 25 rows so filtered pages can still fill to 25.
+export const MAX_FILTER_SCAN_BATCHES = 64;
+// This cap is ranking-only; status correctness comes from bounded by_job lookups for scanned jobs.
+const MAX_FEEDBACK_APPLICATIONS_PER_STATUS = 50;
 
 function assertSafeUrl(url: string) {
   let parsed: URL;
@@ -275,81 +292,139 @@ function jobCard<T extends Doc<"jobs"> & { personalizedScore?: number; preferenc
   };
 }
 
-export const listJobCards = query({
+const listJobCardFilters = {
+  source: v.optional(sourceValidator),
+  status: v.optional(v.union(statusValidator, v.literal("unread"))),
+  isActive: v.optional(v.boolean()),
+  search: v.optional(v.string()),
+  remoteStatus: v.optional(v.string()),
+  area: v.optional(jobAreaValidator),
+};
+
+type JobListBatch = {
+  items: readonly Doc<"jobs">[];
+  applications: readonly { jobId: Id<"jobs">; status: Doc<"applications">["status"] }[];
+  continueCursor: string;
+  isDone: boolean;
+};
+
+type JobCardResult = Omit<Doc<"jobs">, "description"> & {
+  descriptionPreview?: string;
+  applicationStatus?: Doc<"applications">["status"];
+  personalizedScore?: number;
+  preferenceReasons?: string[];
+};
+
+type JobCardsResult = {
+  page: JobCardResult[];
+  continueCursor: string;
+  isDone: boolean;
+};
+
+export const listJobCardsBatch = internalQuery({
   args: {
-    source: v.optional(sourceValidator),
-    status: v.optional(v.union(statusValidator, v.literal("unread"))),
-    isActive: v.optional(v.boolean()),
-    search: v.optional(v.string()),
-    remoteStatus: v.optional(v.string()),
+    ...listJobCardFilters,
     paginationOpts: paginationOptsValidator,
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<JobListBatch> => {
     const useSourceAndActive = args.source !== undefined && args.isActive !== undefined;
     const useSourceOnly = args.source !== undefined && args.isActive === undefined;
     const useActiveOnly = args.isActive !== undefined && args.source === undefined;
 
-    let q;
-    if (useSourceAndActive) {
-      q = ctx.db
-        .query("jobs")
-        .withIndex("by_source_active", (idx) => idx.eq("source", args.source!).eq("isActive", args.isActive!));
-    } else if (useSourceOnly) {
-      q = ctx.db.query("jobs").withIndex("by_source", (idx) => idx.eq("source", args.source!));
-    } else if (useActiveOnly) {
-      q = ctx.db.query("jobs").withIndex("by_active", (idx) => idx.eq("isActive", args.isActive!));
-    } else {
-      q = ctx.db.query("jobs");
-    }
+    const createJobQuery = () => {
+      if (useSourceAndActive) {
+        return ctx.db
+          .query("jobs")
+          .withIndex("by_source_active", (idx) => idx.eq("source", args.source!).eq("isActive", args.isActive!));
+      } else if (useSourceOnly) {
+        return ctx.db.query("jobs").withIndex("by_source", (idx) => idx.eq("source", args.source!));
+      } else if (useActiveOnly) {
+        return ctx.db.query("jobs").withIndex("by_active", (idx) => idx.eq("isActive", args.isActive!));
+      } else {
+        return ctx.db.query("jobs");
+      }
+    };
 
-    const page = await q.order("desc").paginate({
-      ...args.paginationOpts,
-      numItems: Math.min(args.paginationOpts.numItems, 25),
-      maximumRowsRead: Math.min(args.paginationOpts.maximumRowsRead ?? 100, 100),
-    });
-
-    const allApps = await ctx.db.query("applications").take(8192);
-    const applicationsByJobId = new Map(allApps.map((application) => [application.jobId, application]));
-    const feedback: PreferenceFeedback<Doc<"jobs">>[] = [];
-    for (const application of allApps) {
-      if (!["saved", "applied", "archived"].includes(application.status)) continue;
-      const feedbackJob = await ctx.db.get(application.jobId);
-      if (!feedbackJob) continue;
-      feedback.push({ status: application.status as "saved" | "applied" | "archived", job: feedbackJob });
-    }
-
-    let filtered = page.page;
-    const wantsUnread = args.status === "unread";
-    const applicationStatus = (args.status && args.status !== "unread" ? args.status : undefined) as Doc<"applications">["status"] | undefined;
-
-    if (wantsUnread) {
-      filtered = filtered.filter((j) => !applicationsByJobId.has(j._id));
-    } else if (applicationStatus) {
-      filtered = filtered.filter((j) => applicationsByJobId.get(j._id)?.status === applicationStatus);
-    } else {
-      filtered = filtered.filter((j) => applicationsByJobId.get(j._id)?.status !== "archived");
-    }
-
-    if (args.remoteStatus) {
-      const remoteTerm = args.remoteStatus.toLowerCase();
-      filtered = filtered.filter((j) => (j.remoteStatus ?? "").toLowerCase().includes(remoteTerm));
-    }
-
-    if (args.search) {
-      const term = args.search.toLowerCase();
-      filtered = filtered.filter(
-        (j) =>
-          j.title.toLowerCase().includes(term) ||
-          j.company.toLowerCase().includes(term) ||
-          (j.location ?? "").toLowerCase().includes(term) ||
-          (j.remoteStatus ?? "").toLowerCase().includes(term) ||
-          (descriptionPreview(j.description) ?? "").toLowerCase().includes(term),
-      );
-    }
+    const page = await createJobQuery().order("desc").paginate(args.paginationOpts);
+    const applications = await Promise.all(page.page.map(async (job) => {
+      const application = await ctx.db.query("applications").withIndex("by_job", (idx) => idx.eq("jobId", job._id)).first();
+      return application ? { jobId: job._id, status: application.status } : null;
+    }));
 
     return {
-      ...page,
-      page: applyPreferenceSignals(filtered, feedback).map((job) => jobCard(job, applicationsByJobId.get(job._id)?.status)),
+      items: page.page,
+      applications: applications.filter((application): application is NonNullable<typeof application> => application !== null),
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    };
+  },
+});
+
+export const getJobListFeedback = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<PreferenceFeedback<Doc<"jobs">>[]> => {
+    const feedback: PreferenceFeedback<Doc<"jobs">>[] = [];
+    const applications = (
+      await Promise.all(["saved", "applied", "archived"].map((status) =>
+        ctx.db.query("applications")
+          .withIndex("by_status", (idx) => idx.eq("status", status as "saved" | "applied" | "archived"))
+          .take(MAX_FEEDBACK_APPLICATIONS_PER_STATUS),
+      ))
+    ).flat();
+    for (const application of applications) {
+      const job = await ctx.db.get(application.jobId);
+      if (job) feedback.push({ status: application.status as "saved" | "applied" | "archived", job });
+    }
+    return feedback;
+  },
+});
+
+export const listJobCards = action({
+  args: {
+    ...listJobCardFilters,
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args): Promise<JobCardsResult> => {
+    const requestedItems = Math.min(args.paginationOpts.numItems, 25);
+    const applicationsByJobId = new Map<Id<"jobs">, { status: Doc<"applications">["status"] }>();
+    const feedback = await ctx.runQuery(internal.jobs.getJobListFeedback, {});
+    const matchesFilters = (job: Doc<"jobs">) => {
+      const application = applicationsByJobId.get(job._id);
+      const wantsUnread = args.status === "unread";
+      const applicationStatus = (args.status && args.status !== "unread" ? args.status : undefined) as Doc<"applications">["status"] | undefined;
+
+      if (wantsUnread && application) return false;
+      if (applicationStatus && application?.status !== applicationStatus) return false;
+      if (!wantsUnread && !applicationStatus && application?.status === "archived") return false;
+      if (args.area && args.area !== "all" && !matchesJobArea(job, args.area as JobAreaFilter)) return false;
+      if (args.remoteStatus && !(job.remoteStatus ?? "").toLowerCase().includes(args.remoteStatus.toLowerCase())) return false;
+
+      if (args.search) {
+        const term = args.search.toLowerCase();
+        if (!job.title.toLowerCase().includes(term) && !job.company.toLowerCase().includes(term) && !(job.location ?? "").toLowerCase().includes(term) && !(job.remoteStatus ?? "").toLowerCase().includes(term) && !(descriptionPreview(job.description) ?? "").toLowerCase().includes(term)) return false;
+      }
+      return true;
+    };
+
+    const scanned = await scanFilteredActionPage(
+      args.paginationOpts.cursor,
+      async (cursor, maxItems) => {
+        const batch = await ctx.runQuery(internal.jobs.listJobCardsBatch, {
+          ...args,
+          paginationOpts: { numItems: maxItems, cursor },
+        }) as JobListBatch;
+        for (const application of batch.applications) applicationsByJobId.set(application.jobId, application);
+        return batch;
+      },
+      matchesFilters,
+      requestedItems,
+      MAX_FILTER_SCAN_BATCHES,
+    );
+
+    return {
+      page: applyPreferenceSignals(scanned.items, feedback).map((job) => jobCard(job, applicationsByJobId.get(job._id)?.status)),
+      continueCursor: scanned.continueCursor,
+      isDone: scanned.isDone,
     };
   },
 });

@@ -12,13 +12,13 @@ type ConvexHttpResult<T> =
   | { status: "success"; value: T }
   | { status: "error"; errorMessage?: string; errorData?: unknown };
 
-function firstArg<FuncRef extends FunctionReference<"query" | "mutation">>(
+function firstArg<FuncRef extends FunctionReference<"query" | "mutation" | "action">>(
   args: OptionalRestArgs<FuncRef>,
 ): FunctionArgs<FuncRef> {
   return (args[0] ?? {}) as FunctionArgs<FuncRef>;
 }
 
-async function callConvex<T>(kind: "query" | "mutation", path: string, args: unknown): Promise<T> {
+async function callConvex<T>(kind: "query" | "mutation" | "action", path: string, args: unknown): Promise<T> {
   const response = await fetch(`${convexUrl}/api/${kind}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -43,5 +43,11 @@ export const convexHttp = {
     ...args: OptionalRestArgs<Mutation>
   ): Promise<FunctionReturnType<Mutation>> {
     return callConvex("mutation", getFunctionName(mutation), firstArg(args));
+  },
+  action<Action extends FunctionReference<"action">>(
+    action: Action,
+    ...args: OptionalRestArgs<Action>
+  ): Promise<FunctionReturnType<Action>> {
+    return callConvex("action", getFunctionName(action), firstArg(args));
   },
 };

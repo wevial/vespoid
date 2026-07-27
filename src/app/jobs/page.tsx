@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { type MouseEvent, type PointerEvent, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { type MouseEvent, type PointerEvent, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "../../../convex/_generated/api";
 import { SOURCE_LABELS } from "@/lib/status";
 import { convexHttp } from "@/lib/convex-http";
 import { formatDateLabel } from "@/lib/date-format";
 import { descriptionNeedsExpansion, getCollapsedDescription } from "@/lib/job-description-display";
 import { sortJobs, type JobSortOption } from "@/lib/job-sort";
-import { filterJobsByArea, type JobAreaFilter } from "@/lib/job-area";
+import { type JobAreaFilter } from "@/lib/job-area";
 import { DEFAULT_JOB_LIST_FILTERS, JOB_LIST_STATUS_FILTER_OPTIONS, jobListFiltersFromSearchParams, jobListFiltersToSearchParams } from "@/lib/job-list-query";
 import { buildJobListScrollKey, parseSavedScrollY } from "@/lib/job-list-scroll";
+import { beginJobListFilterGeneration, isCurrentRequestGeneration, removeJobFromPages } from "@/lib/job-list-state";
 import { getQuickActionButtonTone, isQuickActionActive, QUICK_TRIAGE_ACTIONS, type QuickTriageStatus } from "@/lib/job-quick-actions";
 import { clampPreviewPanelWidth, DEFAULT_PREVIEW_PANEL_WIDTH, nextPreviewJobId, selectedPreviewJob } from "@/lib/job-preview-panel";
 import type { FunctionReturnType } from "convex/server";
@@ -80,8 +81,9 @@ export default function JobsPage() {
       ...(status ? { status } : {}),
       ...(remote ? { remoteStatus: remote } : {}),
       ...(search.trim() ? { search: search.trim() } : {}),
+      ...(area !== "all" ? { area } : {}),
     }),
-    [source, status, remote, search],
+    [source, status, remote, search, area],
   );
   const [pages, setPages] = useState<JobList[]>();
   const [continueCursor, setContinueCursor] = useState<string | null>(null);
@@ -92,49 +94,46 @@ export default function JobsPage() {
   const [previewPanelWidth, setPreviewPanelWidth] = useState(DEFAULT_PREVIEW_PANEL_WIDTH);
   const [isResizingPreviewPanel, setIsResizingPreviewPanel] = useState(false);
   const [showFullPreviewDescription, setShowFullPreviewDescription] = useState(false);
+  const requestGeneration = useRef(0);
   const jobs = useMemo(() => pages?.flat(), [pages]);
-  const sortedJobs = useMemo(() => (jobs ? sortJobs(filterJobsByArea(jobs, area), sort) : undefined), [jobs, area, sort]);
+  const sortedJobs = useMemo(() => (jobs ? sortJobs(jobs, sort) : undefined), [jobs, sort]);
   const previewJob = useMemo(() => selectedPreviewJob(sortedJobs, previewJobId), [sortedJobs, previewJobId]);
   const canExpandPreviewDescription = descriptionNeedsExpansion(previewJob?.descriptionPreview);
   const previewDescription = showFullPreviewDescription ? (previewJob?.descriptionPreview ?? "No description captured.") : getCollapsedDescription(previewJob?.descriptionPreview);
 
-  const refreshJobs = useCallback(async () => {
-    const firstPage = await convexHttp.query(api.jobs.listJobCards, {
-      ...args,
-      paginationOpts: { numItems: JOBS_PAGE_SIZE, cursor: null },
-    });
-    setPages([firstPage.page]);
-    setContinueCursor(firstPage.continueCursor);
-    setIsDone(firstPage.isDone);
-  }, [args]);
-
   const loadMoreJobs = useCallback(async () => {
     if (isDone || isLoadingMore) return;
+    const loadGeneration = requestGeneration.current;
     setIsLoadingMore(true);
     try {
-      const nextPage = await convexHttp.query(api.jobs.listJobCards, {
+      const nextPage = await convexHttp.action(api.jobs.listJobCards, {
         ...args,
         paginationOpts: { numItems: JOBS_PAGE_SIZE, cursor: continueCursor },
       });
+      if (!isCurrentRequestGeneration(loadGeneration, requestGeneration.current)) return;
       setPages((current) => [...(current ?? []), nextPage.page]);
       setContinueCursor(nextPage.continueCursor);
       setIsDone(nextPage.isDone);
     } finally {
-      setIsLoadingMore(false);
+      if (isCurrentRequestGeneration(loadGeneration, requestGeneration.current)) setIsLoadingMore(false);
     }
   }, [args, continueCursor, isDone, isLoadingMore]);
 
   useEffect(() => {
+    const nextGeneration = beginJobListFilterGeneration(requestGeneration.current);
+    requestGeneration.current = nextGeneration.generation;
+    const generation = nextGeneration.generation;
+    setIsLoadingMore(nextGeneration.isLoadingMore);
     let cancelled = false;
     void Promise.resolve().then(async () => {
       setPages(undefined);
       setContinueCursor(null);
       setIsDone(false);
-      const result = await convexHttp.query(api.jobs.listJobCards, {
+      const result = await convexHttp.action(api.jobs.listJobCards, {
         ...args,
         paginationOpts: { numItems: JOBS_PAGE_SIZE, cursor: null },
       });
-      if (cancelled) return;
+      if (cancelled || !isCurrentRequestGeneration(generation, requestGeneration.current)) return;
       setPages([result.page]);
       setContinueCursor(result.continueCursor);
       setIsDone(result.isDone);
@@ -145,15 +144,18 @@ export default function JobsPage() {
   }, [args]);
 
   const setQuickStatus = useCallback(async (jobId: JobList[number]["_id"], status: QuickTriageStatus) => {
+    const mutationGeneration = requestGeneration.current;
     const pendingKey = `${jobId}:${status}`;
     setPendingQuickAction(pendingKey);
     try {
       await convexHttp.mutation(api.applications.setStatus, { jobId, status });
-      await refreshJobs();
+      if (!isCurrentRequestGeneration(mutationGeneration, requestGeneration.current)) return;
+      setPages((current) => current ? removeJobFromPages(current, jobId).pages : current);
+      setPreviewJobId((current) => current === jobId ? undefined : current);
     } finally {
       setPendingQuickAction(null);
     }
-  }, [refreshJobs]);
+  }, []);
 
   const togglePreview = useCallback((jobId: string) => {
     setShowFullPreviewDescription(false);
@@ -268,7 +270,7 @@ export default function JobsPage() {
       ) : (
         <section className="neon-panel neon-panel-hot overflow-hidden rounded-[2px]">
           <div className="hidden grid-cols-12 gap-3 border-b border-blue-300/14 px-4 py-3 text-xs uppercase tracking-wide text-blue-50/45 md:grid">
-            <span className="col-span-4">Role</span><span className="col-span-2">Source</span><span className="col-span-2">Remote</span><span className="col-span-1">Discovered</span><span className="col-span-3">Triage</span>
+            <span className="col-span-3">Role</span><span className="col-span-2">Salary</span><span className="col-span-2">Source</span><span className="col-span-1">Remote</span><span className="col-span-1">Discovered</span><span className="col-span-3">Triage</span>
           </div>
           <div className="neon-divider divide-y divide-blue-100/10">
             {sortedJobs?.map((job) => (
@@ -277,14 +279,9 @@ export default function JobsPage() {
                 onClick={(event) => handleDesktopRowClick(event, job._id)}
                 className="neon-row grid grid-cols-1 gap-3 px-4 py-4 text-sm md:grid-cols-12 lg:cursor-pointer"
               >
-                <Link href={`/jobs/${job._id}`} onClick={(event) => handleJobTitleClick(event, job._id)} className="md:col-span-4">
+                <Link href={`/jobs/${job._id}`} onClick={(event) => handleJobTitleClick(event, job._id)} className="md:col-span-3">
                   <strong className="block text-slate-50">{job.title}</strong>
                   <span className="text-blue-50/58">{job.company} · {job.location ?? "Unknown"}</span>
-                  <span className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="rounded-[2px] border border-orange-300/28 bg-orange-500/10 px-2.5 py-1 text-xs font-medium text-slate-50 shadow-[0_0_18px_rgba(255,159,10,0.14)]">
-                      Salary: {formatSalaryPreview(job.salaryRange)}
-                    </span>
-                  </span>
                   {job.preferenceReasons && job.preferenceReasons.length > 0 ? (
                     <span className="mt-1 block text-xs text-orange-100/78">Personalized {job.personalizedScore}: {job.preferenceReasons.slice(0, 2).join(" · ")}</span>
                   ) : null}
@@ -292,6 +289,7 @@ export default function JobsPage() {
                     <span className="mt-1 block text-xs text-blue-100/62">Fit {job.fitScore ?? "—"}: {job.fitReasons.slice(0, 3).join(" · ")}</span>
                   ) : null}
                 </Link>
+                <span className="text-orange-100/88 md:col-span-2"><span className="md:hidden text-blue-50/45">Salary: </span>{formatSalaryPreview(job.salaryRange)}</span>
                 <div className="flex items-start gap-2 md:col-span-2">
                   <span className="text-blue-100/78"><span className="md:hidden text-blue-50/45">Source: </span>{SOURCE_LABELS[job.source] ?? job.source}</span>
                   <button
@@ -308,7 +306,7 @@ export default function JobsPage() {
                     {previewJob?._id === job._id ? "Hide" : "Preview"}
                   </button>
                 </div>
-                <span className="text-blue-100/78 md:col-span-2"><span className="md:hidden text-blue-50/45">Remote: </span>{job.remoteStatus ?? "—"}</span>
+                <span className="text-blue-100/78 md:col-span-1"><span className="md:hidden text-blue-50/45">Remote: </span>{job.remoteStatus ?? "—"}</span>
                 <span className="text-blue-50/58 md:col-span-1"><span className="md:hidden text-blue-50/45">Discovered: </span>{formatDate(job.discoveredAt)}</span>
                 <span className="flex flex-col items-start gap-2 md:col-span-3" aria-label={`Quick actions for ${job.title} at ${job.company}`}>
                   {QUICK_TRIAGE_ACTIONS.map((action) => {
