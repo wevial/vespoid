@@ -1,3 +1,4 @@
+import { runHermesCodexPrompt, type HermesReasoning } from "./lib/hermes-codex";
 import { scrapeHNRawPosts } from "./scrape-hn";
 import {
   buildHiringPostCurationPrompt,
@@ -10,24 +11,31 @@ interface Options {
   limit?: number;
   batchSize: number;
   model: string;
+  reasoning: HermesReasoning;
   input?: string;
 }
 
+const REASONING_LEVELS = new Set<HermesReasoning>(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
+
 function parseOptions(argv: string[]): Options {
+  const configuredReasoning = (process.env.VESPOID_LLM_REASONING ?? "low") as HermesReasoning;
   const options: Options = {
     batchSize: 8,
-    model: process.env.VESPOID_LLM_MODEL ?? "gpt-4.1-mini",
+    model: process.env.VESPOID_LLM_MODEL ?? "gpt-5.6-sol",
+    reasoning: configuredReasoning,
   };
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === "--limit") options.limit = Number(argv[++index]);
     else if (arg === "--batch-size") options.batchSize = Number(argv[++index]);
     else if (arg === "--model") options.model = argv[++index] ?? options.model;
+    else if (arg === "--reasoning") options.reasoning = (argv[++index] ?? options.reasoning) as HermesReasoning;
     else if (arg === "--input") options.input = argv[++index];
     else throw new Error(`Unknown option: ${arg}`);
   }
   if (options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit < 1)) throw new Error("--limit must be a positive integer");
   if (!Number.isInteger(options.batchSize) || options.batchSize < 1 || options.batchSize > 20) throw new Error("--batch-size must be an integer from 1 to 20");
+  if (!REASONING_LEVELS.has(options.reasoning)) throw new Error(`Unsupported reasoning level: ${options.reasoning}`);
   return options;
 }
 
@@ -54,35 +62,9 @@ async function loadPosts(options: Options): Promise<HNRawHiringPost[]> {
   return posts.slice(0, options.limit);
 }
 
-async function curateBatch(posts: HNRawHiringPost[], model: string): Promise<LLMCuratedJobDraft[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required for LLM curation");
-
+async function curateBatch(posts: HNRawHiringPost[], model: string, reasoning: HermesReasoning): Promise<LLMCuratedJobDraft[]> {
   const prompt = buildHiringPostCurationPrompt(posts);
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      messages: [
-        { role: "system", content: "You curate job listings and return only valid JSON. Never invent facts." },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`OpenAI curation failed (${response.status}): ${body.slice(0, 1000)}`);
-  }
-
-  const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OpenAI response did not include message content");
+  const content = await runHermesCodexPrompt(prompt, { model, reasoning });
   return parseCuratedDrafts(content);
 }
 
@@ -91,7 +73,7 @@ export async function curateHNWithLLM(options: Options) {
   const drafts: LLMCuratedJobDraft[] = [];
   for (let index = 0; index < posts.length; index += options.batchSize) {
     const batch = posts.slice(index, index + options.batchSize);
-    const batchDrafts = await curateBatch(batch, options.model);
+    const batchDrafts = await curateBatch(batch, options.model, options.reasoning);
     drafts.push(...batchDrafts);
     console.error(`Curated batch ${Math.floor(index / options.batchSize) + 1}/${Math.ceil(posts.length / options.batchSize)}: ${batchDrafts.length} draft roles`);
   }
