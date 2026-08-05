@@ -1,0 +1,534 @@
+import { describe, expect, test } from "bun:test";
+import { extractJobInfo, extractJobInfos } from "../scripts/scrape-hn";
+import { classifyJobFit, extractSalaryRange, isTargetLocation } from "../src/lib/job-fit";
+
+describe("target job fit", () => {
+  test("keeps strong remote product/full-stack roles with target stack and high salary", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Acme AI Devtools",
+      location: "Remote",
+      remoteStatus: "remote",
+      salaryRange: "$190k - $230k",
+      description: "Build AI developer tools with TypeScript, React, Next.js, Go, and Python. 0 to 1 product work.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.score).toBeGreaterThanOrEqual(9);
+    expect(fit.reasons).toContain("target role");
+    expect(fit.reasons).toContain("target location");
+    expect(fit.reasons).toContain("target domain");
+    expect(fit.reasons).toContain("salary target");
+  });
+
+  test("does not reject high-agency startup descriptions as agency recruiters", () => {
+    const fit = classifyJobFit({
+      title: "Full Stack Engineer",
+      company: "Macroscope",
+      location: "San Francisco",
+      description:
+        "Build AI developer tools with TypeScript, React, Python, workflows, and APIs. You are extremely high agency in a small startup.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.rejectionReasons).not.toContain("not a direct job post");
+  });
+
+  test("keeps generalist engineering roles at target devtool companies when the post is engineering-specific", () => {
+    const fit = classifyJobFit({
+      title: "Generalist Engineer",
+      company: "Greptile",
+      location: "San Francisco",
+      remoteStatus: "onsite",
+      salaryRange: "$170K – $210K",
+      description:
+        "Department: Engineering\nBuild AI code-review agents for pull requests with TypeScript, React, and product engineering work.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.reasons).toContain("generalist engineering role");
+    expect(fit.rejectionReasons).not.toContain("not target role");
+  });
+
+  test("keeps hybrid/in-office roles only in target metro areas", () => {
+    expect(isTargetLocation("San Francisco, CA", "onsite")).toBe(true);
+    expect(isTargetLocation("Seattle", "hybrid")).toBe(true);
+    expect(isTargetLocation("Boulder, CO", "hybrid")).toBe(true);
+    expect(isTargetLocation("New York, NY", "hybrid")).toBe(false);
+    expect(isTargetLocation("Berlin, Germany", "onsite")).toBe(false);
+  });
+
+  test("keeps US-eligible remote roles even when headquarters are outside target metros", () => {
+    const fit = classifyJobFit({
+      title: "Full Stack Engineer",
+      company: "InfraKit",
+      location: "Berlin, Germany",
+      remoteStatus: "remote US",
+      description: "Remote team building dev tools in React and Go.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.reasons).toContain("target location");
+  });
+
+  test("rejects remote roles restricted to non-US cities unless explicitly US eligible", () => {
+    for (const location of ["Toronto", "Ottawa", "Montreal", "Singapore", "Abu Dhabi", "France (Remote)"]) {
+      const fit = classifyJobFit({
+        title: "Senior Software Engineer",
+        company: "AI Co",
+        location,
+        remoteStatus: "remote",
+        salaryRange: "$190K - $230K",
+        description: "Build AI developer tools with Python, React, TypeScript, and agents.",
+      });
+      expect(fit.isRelevant).toBe(false);
+      expect(fit.rejectionReasons).toContain("outside work authorization");
+    }
+  });
+
+  test("rejects blacklisted companies", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Palantir",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$200K - $250K",
+      description: "Build AI developer tools with TypeScript, React, and Python.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.score).toBe(0);
+    expect(fit.rejectionReasons).toContain("blacklisted company");
+  });
+
+  test("rejects non-job comments and freelancer ads", () => {
+    expect(classifyJobFit({
+      title: "Not hiring, but actively helping healthcare AI startups navigate compliance challenges.",
+      company: "francosimon",
+      description: "Not hiring, but actively helping healthcare AI startups navigate compliance challenges.",
+    }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Tiger Tracks",
+      company: "SEEKING FREELANCER",
+      remoteStatus: "remote, us/eu timezones",
+      description: "SEEKING FREELANCER | Contract-to-hire | remote",
+    }).isRelevant).toBe(false);
+  });
+
+  test("rejects non-target locations when not remote", () => {
+    const fit = classifyJobFit({
+      title: "Frontend Engineer",
+      company: "GoodStack",
+      location: "NYC",
+      remoteStatus: "onsite",
+      description: "React and TypeScript product engineering.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("outside target locations");
+  });
+
+  test("does not let incidental remote mentions override explicit non-target onsite, hybrid, or local-only roles", () => {
+    expect(classifyJobFit({
+      title: "Full Stack Engineer",
+      company: "Kepler",
+      location: "New York, NY",
+      remoteStatus: "onsite",
+      description: "React, TypeScript, AI workflows, and remote device control infrastructure.",
+    }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Senior Software Engineer",
+      company: "Oaktree Capital",
+      location: "Los Angeles, CA",
+      remoteStatus: "hybrid",
+      description: "Python, React, AI platform work with remote collaborators.",
+    }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Senior Fullstack Python Developer",
+      company: "Giftster",
+      location: "Minneapolis, MN",
+      description: "Work is remote, but applicants must be local to the Twin Cities metro area. Python, Django, JavaScript product work.",
+    }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Senior Fullstack Python Developer",
+      company: "Giftster",
+      location: "Minneapolis, MN (Greater Twin Cities Metro)",
+      remoteStatus: "Remote but local candidates only",
+      description: "Python, Django, JavaScript product work.",
+    }).isRelevant).toBe(false);
+  });
+
+  test("rejects roles that are clearly outside product/full-stack engineering", () => {
+    const fit = classifyJobFit({
+      title: "Growth Marketer",
+      company: "MediaCo",
+      location: "Remote",
+      remoteStatus: "remote",
+      description: "Remote growth marketing role at a product studio.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("not target role");
+
+    const designEngineer = classifyJobFit({
+      title: "Design Engineer",
+      company: "DesignCo",
+      remoteStatus: "Remote US",
+      description: "Design systems, marketing pages, and frontend polish with React and TypeScript.",
+    });
+
+    expect(designEngineer.isRelevant).toBe(false);
+    expect(designEngineer.rejectionReasons).toContain("not target role");
+
+    const intern = classifyJobFit({
+      title: "AI Engineer Intern",
+      company: "Great Question",
+      location: "US / Remote (US)",
+      remoteStatus: "remote",
+      salaryRange: "$6K - $8K / monthly",
+      description: "Internship. Engineering, Full stack. React and AI.",
+    });
+
+    expect(intern.isRelevant).toBe(false);
+    expect(intern.rejectionReasons).toContain("not target role");
+  });
+
+  test("rejects mobile-platform specialist roles", () => {
+    for (const title of [
+      "Staff Software Engineer, iOS",
+      "Senior Software Engineer, Android (Kotlin)",
+      "Member of Technical Staff (iOS Software Engineer, Comet)",
+      "Senior Software Engineer, React Native",
+    ]) {
+      const fit = classifyJobFit({
+        title,
+        company: "MobileCo",
+        location: "Seattle, WA",
+        remoteStatus: "hybrid",
+        salaryRange: "$190K - $240K",
+        description: "Build product experiences with TypeScript, React, Kotlin, Swift, and AI platform integrations.",
+      });
+
+      expect(fit.isRelevant).toBe(false);
+      expect(fit.rejectionReasons).toContain("mobile specialist role");
+    }
+  });
+
+  test("rejects backend/distributed-systems, devops, and embedded-heavy specialist roles", () => {
+    const inference = classifyJobFit({
+      title: "Staff + Senior Software Engineer, Inference",
+      company: "Anthropic",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$320K - $485K",
+      description:
+        "Build distributed systems for model serving, request routing, load balancing, autoscaling, Kubernetes, accelerators, and multi-region inference infrastructure.",
+    });
+    expect(inference.isRelevant).toBe(false);
+    expect(inference.rejectionReasons).toContain("backend/infrastructure specialist role");
+
+    const connectivity = classifyJobFit({
+      title: "Connectivity Software Engineer, Consumer Devices",
+      company: "OpenAI",
+      location: "San Francisco",
+      remoteStatus: "hybrid",
+      salaryRange: "$293K - $325K",
+      description: "Own Bluetooth, BLE, Wi-Fi, wireless connectivity, embedded device networking, and hardware integration.",
+    });
+    expect(connectivity.isRelevant).toBe(false);
+    expect(connectivity.rejectionReasons).toContain("embedded/hardware specialist role");
+
+    const cdn = classifyJobFit({
+      title: "Sr. Software Engineer, CDN (Starlink)",
+      company: "SpaceX",
+      location: "Redmond, WA",
+      remoteStatus: "onsite",
+      salaryRange: "$180K - $220K",
+      description:
+        "Build CDN, content delivery, edge networking, packet routing, global traffic management, and low-latency distributed systems for Starlink.",
+    });
+    expect(cdn.isRelevant).toBe(false);
+    expect(cdn.rejectionReasons).toContain("backend/infrastructure specialist role");
+  });
+
+  test("keeps product/full-stack roles even when they mention APIs or infrastructure incidentally", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "DevtoolCo",
+      location: "Remote US",
+      salaryRange: "$190K - $230K",
+      description:
+        "Build user-facing AI workflow products with React, TypeScript, Next.js, Node APIs, SDKs, and developer experience polish.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.rejectionReasons).not.toContain("backend/infrastructure specialist role");
+    const embeddedInPeopleOrg = classifyJobFit({
+      title: "Software Engineer, Full Stack (People Innovation)",
+      company: "OpenAI",
+      location: "Remote - US",
+      remoteStatus: "remote",
+      salaryRange: "$153K – $385K",
+      description: "A fast-moving engineering team embedded in the People organization. Build recruiting tools with JavaScript, React, Python, Postgres, and AI automations.",
+    });
+    expect(embeddedInPeopleOrg.isRelevant).toBe(true);
+    expect(embeddedInPeopleOrg.rejectionReasons).not.toContain("embedded/hardware specialist role");
+  });
+
+  test("rejects grouped company posts that mix target engineering roles with non-target roles", () => {
+    const fit = classifyJobFit({
+      title: "Data Engineer, Full Stack Engineers (Sr & Staff/Lead), Sr. Product Manager",
+      company: "COVU",
+      remoteStatus: "San Francisco (hybrid) or remote (US)",
+      description: "AI platform using React, TypeScript, Python, Go, and internal tools.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("grouped mixed-role post");
+  });
+
+  test("does not let sibling roles in a split HN comment make non-target individual roles relevant", () => {
+    const rustFit = classifyJobFit({
+      title: "Senior Rust Engineer",
+      company: "Foxglove",
+      remoteStatus: "Onsite San Francisco + Remote",
+      description: "Many open roles: Senior Frontend Engineer, Product Manager, TypeScript, React, AI platform.",
+    });
+
+    expect(rustFit.isRelevant).toBe(false);
+    expect(rustFit.rejectionReasons).toContain("not target role");
+
+    const frontendFit = classifyJobFit({
+      title: "Senior Frontend Engineer (Visualization, WebGL, WASM)",
+      company: "Foxglove",
+      remoteStatus: "Onsite San Francisco + Remote",
+      description: "TypeScript, React, AI platform work.",
+    });
+
+    expect(frontendFit.isRelevant).toBe(true);
+  });
+
+  test("rejects generic multi-role company posts until roles are split into individual listings", () => {
+    const fit = classifyJobFit({
+      title: "Multiple Roles",
+      company: "Instinct Science",
+      remoteStatus: "Remote US",
+      description: "Hiring frontend engineers, product managers, and designers for a TypeScript React AI platform.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("grouped company post");
+  });
+
+  test("rejects remote roles restricted to EU or Canada because US work eligibility is not assumed", () => {
+    const euOnly = classifyJobFit({
+      title: "Senior Full Stack Engineer",
+      company: "EuroDevTools",
+      remoteStatus: "Remote EU only",
+      description: "Build AI developer tools with TypeScript and React. Remote Europe only.",
+    });
+
+    expect(euOnly.isRelevant).toBe(false);
+    expect(euOnly.rejectionReasons).toContain("outside work authorization");
+
+    const emeaApac = classifyJobFit({
+      title: "Senior Python Backend Engineer",
+      company: "RegionLocked",
+      remoteStatus: "Remote EMEA/APAC",
+      description: "AI platform work with Python and React.",
+    });
+
+    expect(emeaApac.isRelevant).toBe(false);
+    expect(emeaApac.rejectionReasons).toContain("outside work authorization");
+
+    const europeTimezone = classifyJobFit({
+      title: "Senior Backend Engineer",
+      company: "EuroTimezone",
+      remoteStatus: "Hybrid London, Paris, Montpellier or remote UTC-1 to UTC+2",
+      description: "Developer tools with TypeScript, React, and Python.",
+    });
+
+    expect(europeTimezone.isRelevant).toBe(false);
+    expect(europeTimezone.rejectionReasons).toContain("outside work authorization");
+
+    const cestTimezone = classifyJobFit({
+      title: "Flutter mobile engineer, Software Engineer",
+      company: "CETCo",
+      remoteStatus: "Remote within 2/3 hrs timezone of CEST",
+      description: "Product engineering with React Native, TypeScript, and AI features.",
+    });
+
+    expect(cestTimezone.isRelevant).toBe(false);
+    expect(cestTimezone.rejectionReasons).toContain("outside work authorization");
+
+    const canadaOnly = classifyJobFit({
+      title: "Product Engineer",
+      company: "NorthStack",
+      remoteStatus: "Remote Canada only",
+      description: "React, TypeScript, and Python product work.",
+    });
+
+    expect(canadaOnly.isRelevant).toBe(false);
+    expect(canadaOnly.rejectionReasons).toContain("outside work authorization");
+  });
+
+  test("keeps remote roles that explicitly include the US even if they also include other regions", () => {
+    const fit = classifyJobFit({
+      title: "Staff Software Engineer, AI",
+      company: "GlobalHealth",
+      remoteStatus: "Remote US / Canada / Europe",
+      description: "AI product engineering with TypeScript, React, and Python. $190k-$220k.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.rejectionReasons).not.toContain("outside work authorization");
+  });
+
+  test("treats Spain-only roles as possible but uncertain instead of standard EU eligible", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Madrid AI Tools",
+      location: "Madrid, Spain",
+      remoteStatus: "Hybrid Spain",
+      description: "TypeScript, React, Python, and AI product work.",
+    });
+
+    expect(fit.isRelevant).toBe(true);
+    expect(fit.reasons).toContain("possible Spain eligibility");
+  });
+
+  test("calls out roles with very senior experience expectations", () => {
+    const staffPlus = classifyJobFit({
+      title: "Staff+ Software Engineer, Developer Productivity",
+      company: "Anthropic",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      description: "Build developer infrastructure with TypeScript and Python. Strong candidates may have 15+ years of experience in a Software Engineer role.",
+    });
+    const explicitYears = classifyJobFit({
+      title: "Model Performance Software Engineer, Claude Code",
+      company: "Anthropic",
+      location: "San Francisco, CA",
+      remoteStatus: "hybrid",
+      description: "Build Claude Code infrastructure with TypeScript and Python. Have 10+ years of software engineering experience with Staff or Principal engineer scope.",
+    });
+
+    expect(staffPlus.isRelevant).toBe(true);
+    expect(staffPlus.reasons).toContain("very senior expectations");
+    expect(explicitYears.isRelevant).toBe(true);
+    expect(explicitYears.reasons).toContain("very senior expectations");
+  });
+
+  test("boosts Seattle and Washington roles above otherwise similar non-WA target locations", () => {
+    const seattleFit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Cascade Devtools",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$180k - $220k",
+      description: "React, TypeScript, Python, and AI developer tools.",
+    });
+    const sfFit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Bay Devtools",
+      location: "San Francisco, CA",
+      remoteStatus: "hybrid",
+      salaryRange: "$180k - $220k",
+      description: "React, TypeScript, Python, and AI developer tools.",
+    });
+
+    expect(seattleFit.isRelevant).toBe(true);
+    expect(sfFit.isRelevant).toBe(true);
+    expect(seattleFit.score).toBeGreaterThan(sfFit.score);
+    expect(seattleFit.reasons).toContain("Seattle/WA preference");
+  });
+
+  test("applies compensation floors by location while allowing missing salary", () => {
+    expect(classifyJobFit({
+      title: "Senior Frontend Engineer",
+      company: "Bay Tools",
+      location: "San Francisco",
+      remoteStatus: "hybrid",
+      salaryRange: "$140k - $165k",
+      description: "React, TypeScript, and AI developer tools.",
+    }).isRelevant).toBe(false);
+
+    expect(classifyJobFit({
+      title: "Senior Full Stack Engineer",
+      company: "Denver Tools",
+      location: "Denver, CO",
+      remoteStatus: "hybrid",
+      salaryRange: "$150k - $165k",
+      description: "React, TypeScript, Go, and developer tools.",
+    }).isRelevant).toBe(true);
+
+    expect(classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Remote AI",
+      remoteStatus: "Remote US",
+      description: "React, TypeScript, Python, and AI product work. Compensation not listed.",
+    }).isRelevant).toBe(true);
+  });
+
+  test("parses compact salary ranges", () => {
+    expect(extractSalaryRange("Full-time | $180-220K + equity")?.max).toBe(220000);
+    expect(extractSalaryRange("Compensation: $160,000 - $190,000")?.max).toBe(190000);
+    expect(extractSalaryRange("Salary £120k")?.max).toBeUndefined();
+  });
+});
+
+describe("HN listing extraction", () => {
+  test("does not overwrite a real location with employment type segments", () => {
+    const info = extractJobInfo(
+      "Y Combinator | Product Engineers on YC's own team | San Francisco | Full Time | $180K - $250K",
+      "Y Combinator | Product Engineers on YC's own team | San Francisco | Full Time | $180K - $250K<p>Build software for founders with React and TypeScript.</p>",
+      "yc_throwaway",
+    );
+
+    expect(info.title).toBe("Product Engineers on YC's own team");
+    expect(info.location).toBe("San Francisco");
+    expect(info.salaryRange).toBe("$180K - $250K");
+  });
+
+  test("skips URL and remote segments to choose the first role-like title", () => {
+    const info = extractJobInfo(
+      "SerpApi | https://serpapi.com | Junior to Senior Fullstack Engineer multiple positions | Austin, TX | ONSITE or FULLY REMOTE | $150K - 180K",
+      "SerpApi | https://serpapi.com | Junior to Senior Fullstack Engineer multiple positions | Austin, TX | ONSITE or FULLY REMOTE | $150K - 180K<p>Search API company using React.</p>",
+      "serpapi",
+    );
+
+    expect(info.title).toBe("Junior to Senior Fullstack Engineer multiple positions");
+    expect(info.location).toBe("Austin, TX");
+    expect(info.remoteStatus).toBe("onsite or fully remote");
+  });
+
+  test("splits HN company comments with explicit role lists into individual target role listings", () => {
+    const infos = extractJobInfos(
+      "Foxglove | Onsite (San Francisco) + Remote | Full Time | https://foxglove.dev/",
+      `Foxglove | Onsite (San Francisco) + Remote | Full Time | https://foxglove.dev/<p>
+        Foxglove is the leading observability platform for robotics and physical AI.
+        Many open roles:<p>
+        - Senior Rust Engineer<br>
+        - Senior Frontend Engineer (Visualization, WebGL, WASM)<br>
+        - Solutions Engineer, Data Infrastructure<br>
+        - Product Manager, Data + ML<br>
+        - Account Executive<br>
+        Email jobs@example.com
+      `,
+      "foxglove",
+    );
+
+    expect(infos.map((info) => info.title)).toEqual([
+      "Senior Rust Engineer",
+      "Senior Frontend Engineer (Visualization, WebGL, WASM)",
+      "Solutions Engineer, Data Infrastructure",
+    ]);
+    expect(infos.every((info) => info.company === "Foxglove")).toBe(true);
+    expect(infos.every((info) => info.remoteStatus === "onsite (san francisco) + remote")).toBe(true);
+    expect(infos.every((info) => !info.description.includes("Product Manager"))).toBe(true);
+  });
+});
