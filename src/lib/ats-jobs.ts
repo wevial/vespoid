@@ -18,6 +18,8 @@ export interface AtsJobListing {
 export interface AshbyJob {
   title?: unknown;
   location?: unknown;
+  isRemote?: unknown;
+  workplaceType?: unknown;
   department?: unknown;
   jobUrl?: unknown;
   descriptionHtml?: unknown;
@@ -166,6 +168,14 @@ export function mapAshbyJob(boardSlug: string, posting: AshbyJob, companyOverrid
   if (!title || !url) return undefined;
 
   const location = optionalString(posting.location);
+  const workplaceType = optionalString(posting.workplaceType);
+  const explicitRemoteStatus = /hybrid/i.test(workplaceType ?? "")
+    ? "hybrid"
+    : /onsite|on-site|in-office/i.test(workplaceType ?? "")
+      ? "onsite"
+      : posting.isRemote === true || /remote/i.test(workplaceType ?? "")
+        ? "remote"
+        : undefined;
   const salaryRange = compensationSummary(posting.compensation);
   const description = [
     optionalString(posting.department) ? `Department: ${optionalString(posting.department)}` : undefined,
@@ -183,7 +193,7 @@ export function mapAshbyJob(boardSlug: string, posting: AshbyJob, companyOverrid
     description,
     salaryRange,
     location,
-    remoteStatus: remoteStatusFromText(location, description),
+    remoteStatus: explicitRemoteStatus ?? remoteStatusFromText(location, description),
     postedAt: optionalString(posting.publishedAt),
   });
 }

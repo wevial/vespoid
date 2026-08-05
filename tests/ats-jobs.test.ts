@@ -28,6 +28,29 @@ describe("ATS company-board mapping", () => {
     expect(job?.fitReasons).toContain("target role");
   });
 
+  test("honors Ashby's explicit remote metadata when the location is country-wide", () => {
+    const job = mapAshbyJob(
+      "socket",
+      {
+        title: "Forward Deployed Engineer, Python",
+        location: "United States",
+        isRemote: true,
+        workplaceType: "Remote",
+        department: "Customer Engineering",
+        jobUrl: "https://jobs.ashbyhq.com/socket/fde",
+        descriptionPlain: "Build Python developer tools and AI security workflows with customers. This role is remote with customer onsite engagements.",
+        compensation: { compensationTierSummary: "$125K - $200K" },
+      },
+      "Socket",
+    );
+
+    expect(job).toMatchObject({
+      company: "Socket",
+      location: "United States",
+      remoteStatus: "remote",
+    });
+  });
+
   test("does not label hybrid, office-required, or city-only postings as broadly remote", () => {
     const hybrid = mapAshbyJob(
       "openai",

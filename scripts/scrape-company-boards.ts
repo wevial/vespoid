@@ -23,6 +23,8 @@ export const CURATED_COMPANY_BOARDS: CompanyBoardConfig[] = [
   { provider: "ashby", slug: "macroscope", company: "Macroscope" },
   { provider: "ashby", slug: "read-ai", company: "Read AI" },
   { provider: "ashby", slug: "statsig", company: "Statsig" },
+  { provider: "ashby", slug: "serval", company: "Serval" },
+  { provider: "ashby", slug: "socket", company: "Socket" },
   { provider: "ashby", slug: "motherduck", company: "MotherDuck" },
   { provider: "ashby", slug: "temporal", company: "Temporal" },
   { provider: "ashby", slug: "typesafe-ai", company: "TypeSafe AI" },
@@ -59,6 +61,7 @@ const POSTHOG_CAREER_URLS = [
   "https://posthog.com/careers/product-engineer",
 ];
 
+const GITHUB_CAREERS_API_URL = "https://www.github.careers/api/jobs?limit=100&page=1&internal=false";
 const NOUS_RESEARCH_CAREERS_URL = "https://nousresearch.com/careers";
 const NOUS_RESEARCH_ROLE_CARDS = [
   {
@@ -152,6 +155,50 @@ function normalizedRemoteStatus(locationType?: string): string | undefined {
   return undefined;
 }
 
+export function mapGitHubCareerJob(value: unknown): AtsJobListing | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const wrapped = value as { data?: unknown };
+  if (!wrapped.data || typeof wrapped.data !== "object") return undefined;
+  const data = wrapped.data as Record<string, unknown>;
+  if (data.country_code !== "US") return undefined;
+
+  const slug = typeof data.slug === "string" ? data.slug.trim() : "";
+  const title = typeof data.title === "string" ? data.title.trim() : "";
+  if (!slug || !title) return undefined;
+
+  const locationName = typeof data.location_name === "string" ? data.location_name.trim() : "";
+  const country = typeof data.country === "string" ? data.country.trim() : "";
+  const location = locationName || country || "United States";
+  const descriptionHtml = [data.description, data.qualifications, data.responsibilities]
+    .filter((part): part is string => typeof part === "string" && Boolean(part.trim()))
+    .join("\n");
+  const description = normalizedText(new JSDOM(`<body>${descriptionHtml}</body>`).window.document);
+  const candidate = {
+    url: `https://www.github.careers/careers-home/jobs/${encodeURIComponent(slug)}?lang=en-us`,
+    title,
+    company: "GitHub",
+    source: "company_board" as const,
+    description,
+    location,
+    remoteStatus: /\bremote\b/i.test(location) ? "remote" : undefined,
+    postedAt: typeof data.posted_date === "string" ? data.posted_date.trim() || undefined : undefined,
+  };
+  const fit = classifyJobFit(candidate);
+  if (!fit.isRelevant) return undefined;
+  return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
+}
+
+async function scrapeGitHubCareers(): Promise<AtsJobListing[]> {
+  try {
+    const response = await fetchJson(GITHUB_CAREERS_API_URL) as { jobs?: unknown };
+    const jobs = Array.isArray(response.jobs) ? response.jobs : [];
+    return jobs.map(mapGitHubCareerJob).filter((job): job is AtsJobListing => Boolean(job));
+  } catch (error) {
+    console.warn(`Skipped github-careers: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
 export function mapGreptileCareerPage(url: string, html: string): AtsJobListing | undefined {
   const dom = new JSDOM(html);
   const document = dom.window.document;
@@ -232,7 +279,7 @@ export function extractNousResearchRoleLinks(html: string): string[] {
   const dom = new JSDOM(html, { url: NOUS_RESEARCH_CAREERS_URL });
   const document = dom.window.document;
   const roleLinks = [...document.querySelectorAll("a")]
-    .filter((link) => /\bfull\s*time\b/i.test(link.textContent ?? ""))
+    .filter((link) => link.matches("a.role-link") || link.querySelector(".badge.full-time") !== null || /\bfull\s+time\b/i.test(link.textContent ?? ""))
     .map((link) => link.href)
     .filter((href) => /^https:\/\/nousresearch\.com\//i.test(href) && !/\/careers\/?$/i.test(new URL(href).pathname));
   return [...new Set(roleLinks)];
@@ -427,6 +474,7 @@ export async function scrapeCompanyBoards(configs = CURATED_COMPANY_BOARDS): Pro
   });
   jobs.push(...await scrapeGreptileCareers());
   jobs.push(...await scrapePostHogCareers());
+  jobs.push(...await scrapeGitHubCareers());
   jobs.push(...await scrapeNousResearchCareers());
   return dedupeAtsJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
 }
