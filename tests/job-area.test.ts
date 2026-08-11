@@ -24,7 +24,6 @@ describe("job area filtering", () => {
     ["sf-bay", ["remote-us-sf-preferred", "remote-us-hybrid", "sf-city-list-remote", "sf-local-remote", "sf"]],
     ["seattle", ["sf-city-list-remote", "seattle", "kirkland", "washington"]],
     ["denver-boulder", ["denver"]],
-    ["spain", ["spain"]],
   ] as [JobAreaFilter, string[]][])("filters %s jobs", (area, expectedIds) => {
     expect(filterJobsByArea(jobs, area).map((job) => job._id)).toEqual(expectedIds);
   });

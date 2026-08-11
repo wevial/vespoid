@@ -98,6 +98,7 @@ describe("LLM hiring-post curation safety", () => {
     expect(prompt).toContain("Product Engineer / Full-stack / Frontend-leaning Software Engineer");
     expect(prompt).toContain("Do not invent");
     expect(prompt).toContain("reject Product Manager");
+    expect(prompt).not.toContain("Spain");
     expect(prompt).toContain("sourceCommentId");
     expect(prompt).toContain("Foxglove");
   });

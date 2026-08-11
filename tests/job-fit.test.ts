@@ -388,7 +388,7 @@ describe("target job fit", () => {
     expect(fit.rejectionReasons).not.toContain("outside work authorization");
   });
 
-  test("treats Spain-only roles as possible but uncertain instead of standard EU eligible", () => {
+  test("rejects Spain-only roles outside the target locations", () => {
     const fit = classifyJobFit({
       title: "Senior Product Engineer",
       company: "Madrid AI Tools",
@@ -397,8 +397,22 @@ describe("target job fit", () => {
       description: "TypeScript, React, Python, and AI product work.",
     });
 
-    expect(fit.isRelevant).toBe(true);
-    expect(fit.reasons).toContain("possible Spain eligibility");
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("outside target locations");
+    expect(fit.reasons).not.toContain("possible Spain eligibility");
+  });
+
+  test("rejects Spain-only remote roles as outside US work authorization", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Barcelona AI Tools",
+      location: "Barcelona, Spain",
+      remoteStatus: "Remote Spain",
+      description: "TypeScript, React, Python, and AI product work.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("outside work authorization");
   });
 
   test("calls out roles with very senior experience expectations", () => {

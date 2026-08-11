@@ -15,7 +15,6 @@ const jobAreaValidator = v.union(
   v.literal("sf-bay"),
   v.literal("seattle"),
   v.literal("denver-boulder"),
-  v.literal("spain"),
 );
 // Keep post-filter pagination bounded: at most 1,600 raw rows per request.
 // The action scans up to 64 batches of 25 rows so filtered pages can still fill to 25.

@@ -32,7 +32,6 @@ const TARGET_METRO =
   /\b(seattle|bellevue|redmond|san francisco|sf\b|bay area|palo alto|mountain view|sunnyvale|san mateo|san jose|oakland|berkeley|denver|boulder)\b/i;
 const WASHINGTON_PREFERRED = /\b(seattle|bellevue|redmond|kirkland|washington state|wa\b)\b/i;
 const DENVER_METRO = /\b(denver|boulder)\b/i;
-const SPAIN = /\b(spain|madrid|barcelona)\b/i;
 const REMOTE = /\b(remote|distributed|work from anywhere|wfh)\b/i;
 const ONSITE_OR_HYBRID = /\b(hybrid|onsite|on-site|in[-\s]?office|office)\b/i;
 const LOCAL_ONLY = /\b(local candidates only|must be local|applicants must be local|local to the)\b/i;
@@ -46,7 +45,7 @@ const OUTSIDE_US_AUTHORIZATION = new RegExp(
   "i",
 );
 const NON_US_REGION =
-  /\b(eu|europe|emea|apac|uk|united kingdom|canada|canadian|australia|new zealand|aus\/nz|india|france|singapore|abu dhabi|montreal|toronto|ottawa|london|paris|montpellier|amsterdam|berlin|zurich|munich|prague|skopje|helsinki|cet|cest)\b|\butc\s*[+-]\s*\d{1,2}\b/i;
+  /\b(eu|europe|emea|apac|uk|united kingdom|canada|canadian|australia|new zealand|aus\/nz|india|france|spain|madrid|barcelona|singapore|abu dhabi|montreal|toronto|ottawa|london|paris|montpellier|amsterdam|berlin|zurich|munich|prague|skopje|helsinki|cet|cest)\b|\butc\s*[+-]\s*\d{1,2}\b/i;
 const US_ELIGIBLE_REGION = /\b(us|u\.s\.|usa|u\.s\.a\.|united states|north america|worldwide|global|anywhere)\b/i;
 const NON_JOB = /\b(not hiring|no longer hiring|actively helping|seeking freelancer|seeking work|for hire|contract-to-hire|fractional|consulting only|staffing agency|recruiting agency)\b/i;
 const NON_TARGET_ROLE = /\b(marketer|marketing|sales|account executive|customer success|support engineer|design engineer|designer|product manager|data scientist|machine learning researcher|security analyst|recruiter|intern\b|internship|student)\b/i;
@@ -98,20 +97,19 @@ export function isTargetLocation(location?: string, remoteStatus?: string, descr
   const explicitStatus = remoteStatus ?? "";
   const explicit = [explicitLocation, explicitStatus].join(" ");
 
-  if (TARGET_METRO.test(explicit) || SPAIN.test(explicit)) return true;
+  if (TARGET_METRO.test(explicit)) return true;
   if (LOCAL_ONLY.test([explicit, description].filter(Boolean).join(" "))) return false;
   if (REMOTE.test(explicit)) return true;
   if (ONSITE_OR_HYBRID.test(explicit)) return false;
   if (LOCAL_ONLY.test(description ?? "")) return false;
 
   const fallback = description ?? "";
-  return TARGET_METRO.test(fallback) || SPAIN.test(fallback) || REMOTE.test(fallback);
+  return TARGET_METRO.test(fallback) || REMOTE.test(fallback);
 }
 
 function hasOutsideWorkAuthorizationRestriction(job: JobFitInput): boolean {
   const explicitRegionText = [job.location, job.remoteStatus].filter(Boolean).join(" ");
   const text = haystack(job);
-  if (SPAIN.test(text)) return false;
   if (OUTSIDE_US_AUTHORIZATION.test(text)) return true;
   return NON_US_REGION.test(explicitRegionText) && !US_ELIGIBLE_REGION.test(explicitRegionText);
 }
@@ -210,10 +208,6 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     if (hasWashingtonPreference(job)) {
       score += 2;
       reasons.push("Seattle/WA preference");
-    }
-    if (SPAIN.test(text) && !TARGET_METRO.test(text)) {
-      score -= 1;
-      reasons.push("possible Spain eligibility");
     }
   } else {
     rejectionReasons.push("outside target locations");
