@@ -68,6 +68,35 @@ describe("refresh completeness", () => {
     });
   });
 
+  test("marks a company-board payload incomplete when a discovered Nous role page falls back", async () => {
+    mockFetch((url) => {
+      if (url === "https://nousresearch.com/careers") {
+        return new Response(`
+          <p>Our team is fully remote.</p>
+          <a class="role-link" href="/full-stack-engineer/">Full Stack Engineer</a>
+        `, { status: 200 });
+      }
+      if (url === "https://nousresearch.com/full-stack-engineer/") {
+        return new Response("unavailable", { status: 503, statusText: "Service Unavailable" });
+      }
+      return successfulResponse();
+    });
+
+    const payload = await scrapeCompanyBoards([{ provider: "ashby", slug: "example" }]);
+
+    expect(payload).toMatchObject({
+      source: "company_board",
+      complete: false,
+      failedSources: ["nousresearch-careers:0"],
+    });
+    expect(payload.jobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        company: "Nous Research",
+        url: "https://nousresearch.com/full-stack-engineer/",
+      }),
+    ]));
+  });
+
   test("marks a city-board payload complete when every Built In page succeeds", async () => {
     mockFetch(() => new Response("<html></html>", { status: 200 }));
 

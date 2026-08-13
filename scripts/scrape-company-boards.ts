@@ -363,9 +363,11 @@ async function scrapeNousResearchCareers(): Promise<{ jobs: AtsJobListing[]; fai
     roleLinks.map(async (url) => {
       const fallback = NOUS_RESEARCH_ROLE_CARDS.find((role) => role.url === url);
       try {
-        return mapNousResearchRolePage(url, await fetchText(url), careersHtml);
+        return { job: mapNousResearchRolePage(url, await fetchText(url), careersHtml), failed: false };
       } catch (error) {
-        if (fallback) return mapNousResearchRoleSummary(fallback.title, fallback.url, fallback.summary, careersHtml);
+        if (fallback) {
+          return { job: mapNousResearchRoleSummary(fallback.title, fallback.url, fallback.summary, careersHtml), failed: true };
+        }
         throw error;
       }
     }),
@@ -374,7 +376,8 @@ async function scrapeNousResearchCareers(): Promise<{ jobs: AtsJobListing[]; fai
   const failedSources: string[] = [];
   settled.forEach((result, index) => {
     if (result.status === "fulfilled") {
-      if (result.value) jobs.push(result.value);
+      if (result.value.job) jobs.push(result.value.job);
+      if (result.value.failed) failedSources.push(`nousresearch-careers:${index}`);
     } else {
       console.warn(`Skipped nousresearch-careers:${roleLinks[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       failedSources.push(`nousresearch-careers:${index}`);
