@@ -34,8 +34,7 @@ export function selectStaleIds<Id>(
     .filter((job) => {
       if (job.source === "company_board" && refresh.complete === false && refresh.successfulScopes !== undefined) {
         if (!job.refreshScope || !refresh.successfulScopes.includes(job.refreshScope)) return false;
-        const scopeUrls = currentUrlsByScope.get(job.refreshScope);
-        return scopeUrls !== undefined && !scopeUrls.has(job.url);
+        return !currentUrlsByScope.get(job.refreshScope)?.has(job.url);
       }
       const sourceUrls = currentUrlsBySource.get(job.source);
       return sourceUrls !== undefined && !sourceUrls.has(job.url);

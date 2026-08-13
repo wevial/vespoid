@@ -161,4 +161,19 @@ describe("refresh completeness", () => {
 
     expect(staleIds).toEqual(["good-missing"]);
   });
+
+  test("reconciles an empty successful company scope while retaining failed and legacy scopes", () => {
+    const active = [
+      { _id: "empty-missing", source: "company_board", refreshScope: "ashby:empty", url: "https://example.com/empty-missing" },
+      { _id: "failed-missing", source: "company_board", refreshScope: "ashby:failed", url: "https://example.com/failed-missing" },
+      { _id: "legacy-missing", source: "company_board", url: "https://example.com/legacy-missing" },
+    ];
+    const currentUrlsBySource = new Map<string, Set<string>>();
+    const currentUrlsByScope = new Map<string, Set<string>>();
+    const refresh = { complete: false, successfulScopes: ["ashby:empty"], failedScopes: ["ashby:failed"] };
+
+    const staleIds = selectStaleIds(active, currentUrlsBySource, parseIngestOptions([]), refresh, currentUrlsByScope);
+
+    expect(staleIds).toEqual(["empty-missing"]);
+  });
 });
