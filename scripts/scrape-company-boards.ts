@@ -1,11 +1,18 @@
 import { JSDOM } from "jsdom";
 import { dedupeAtsJobs, mapAshbyJob, mapGreenhouseJob, mapLeverPosting, type AtsJobListing } from "../src/lib/ats-jobs";
 import { classifyJobFit } from "../src/lib/job-fit";
+import { refreshPayload, type RefreshPayload } from "../src/lib/refresh-payload";
 
 export interface CompanyBoardConfig {
   slug: string;
   company?: string;
   provider: "ashby" | "lever" | "greenhouse" | "workable";
+}
+
+class PartialBoardFailure extends Error {
+  constructor(readonly jobs: AtsJobListing[], message: string) {
+    super(message);
+  }
 }
 
 export const CURATED_COMPANY_BOARDS: CompanyBoardConfig[] = [
@@ -188,14 +195,14 @@ export function mapGitHubCareerJob(value: unknown): AtsJobListing | undefined {
   return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
 }
 
-async function scrapeGitHubCareers(): Promise<AtsJobListing[]> {
+async function scrapeGitHubCareers(): Promise<{ jobs: AtsJobListing[]; failedSources: string[] }> {
   try {
     const response = await fetchJson(GITHUB_CAREERS_API_URL) as { jobs?: unknown };
     const jobs = Array.isArray(response.jobs) ? response.jobs : [];
-    return jobs.map(mapGitHubCareerJob).filter((job): job is AtsJobListing => Boolean(job));
+    return { jobs: jobs.map(mapGitHubCareerJob).filter((job): job is AtsJobListing => Boolean(job)), failedSources: [] };
   } catch (error) {
     console.warn(`Skipped github-careers: ${error instanceof Error ? error.message : String(error)}`);
-    return [];
+    return { jobs: [], failedSources: ["github-careers"] };
   }
 }
 
@@ -229,15 +236,21 @@ export function mapGreptileCareerPage(url: string, html: string): AtsJobListing 
   return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
 }
 
-async function scrapeGreptileCareers(): Promise<AtsJobListing[]> {
+async function scrapeGreptileCareers(): Promise<{ jobs: AtsJobListing[]; failedSources: string[] }> {
   const settled = await Promise.allSettled(
     GREPTILE_CAREER_URLS.map(async (url) => mapGreptileCareerPage(url, await fetchText(url))),
   );
-  return settled.flatMap((result, index) => {
-    if (result.status === "fulfilled") return result.value ? [result.value] : [];
-    console.warn(`Skipped greptile-careers:${GREPTILE_CAREER_URLS[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-    return [];
+  const jobs: AtsJobListing[] = [];
+  const failedSources: string[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      if (result.value) jobs.push(result.value);
+    } else {
+      console.warn(`Skipped greptile-careers:${GREPTILE_CAREER_URLS[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`greptile-careers:${index}`);
+    }
   });
+  return { jobs, failedSources };
 }
 
 export function mapPostHogCareerPage(url: string, html: string): AtsJobListing | undefined {
@@ -264,15 +277,21 @@ export function mapPostHogCareerPage(url: string, html: string): AtsJobListing |
   return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
 }
 
-async function scrapePostHogCareers(): Promise<AtsJobListing[]> {
+async function scrapePostHogCareers(): Promise<{ jobs: AtsJobListing[]; failedSources: string[] }> {
   const settled = await Promise.allSettled(
     POSTHOG_CAREER_URLS.map(async (url) => mapPostHogCareerPage(url, await fetchText(url))),
   );
-  return settled.flatMap((result, index) => {
-    if (result.status === "fulfilled") return result.value ? [result.value] : [];
-    console.warn(`Skipped posthog-careers:${POSTHOG_CAREER_URLS[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-    return [];
+  const jobs: AtsJobListing[] = [];
+  const failedSources: string[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      if (result.value) jobs.push(result.value);
+    } else {
+      console.warn(`Skipped posthog-careers:${POSTHOG_CAREER_URLS[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`posthog-careers:${index}`);
+    }
   });
+  return { jobs, failedSources };
 }
 
 export function extractNousResearchRoleLinks(html: string): string[] {
@@ -325,15 +344,18 @@ export function mapNousResearchRolePage(url: string, html: string, careersHtml =
   return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
 }
 
-async function scrapeNousResearchCareers(): Promise<AtsJobListing[]> {
+async function scrapeNousResearchCareers(): Promise<{ jobs: AtsJobListing[]; failedSources: string[] }> {
   let careersHtml = "";
   try {
     careersHtml = await fetchText(NOUS_RESEARCH_CAREERS_URL);
   } catch (error) {
     console.warn(`Skipped live nousresearch careers index: ${error instanceof Error ? error.message : String(error)}`);
-    return NOUS_RESEARCH_ROLE_CARDS
-      .map((role) => mapNousResearchRoleSummary(role.title, role.url, role.summary))
-      .filter((job): job is AtsJobListing => Boolean(job));
+    return {
+      jobs: NOUS_RESEARCH_ROLE_CARDS
+        .map((role) => mapNousResearchRoleSummary(role.title, role.url, role.summary))
+        .filter((job): job is AtsJobListing => Boolean(job)),
+      failedSources: ["nousresearch-careers:index"],
+    };
   }
 
   const roleLinks = extractNousResearchRoleLinks(careersHtml);
@@ -341,18 +363,27 @@ async function scrapeNousResearchCareers(): Promise<AtsJobListing[]> {
     roleLinks.map(async (url) => {
       const fallback = NOUS_RESEARCH_ROLE_CARDS.find((role) => role.url === url);
       try {
-        return mapNousResearchRolePage(url, await fetchText(url), careersHtml);
+        return { job: mapNousResearchRolePage(url, await fetchText(url), careersHtml), failed: false };
       } catch (error) {
-        if (fallback) return mapNousResearchRoleSummary(fallback.title, fallback.url, fallback.summary, careersHtml);
+        if (fallback) {
+          return { job: mapNousResearchRoleSummary(fallback.title, fallback.url, fallback.summary, careersHtml), failed: true };
+        }
         throw error;
       }
     }),
   );
-  return settled.flatMap((result, index) => {
-    if (result.status === "fulfilled") return result.value ? [result.value] : [];
-    console.warn(`Skipped nousresearch-careers:${roleLinks[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-    return [];
+  const jobs: AtsJobListing[] = [];
+  const failedSources: string[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      if (result.value.job) jobs.push(result.value.job);
+      if (result.value.failed) failedSources.push(`nousresearch-careers:${index}`);
+    } else {
+      console.warn(`Skipped nousresearch-careers:${roleLinks[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`nousresearch-careers:${index}`);
+    }
   });
+  return { jobs, failedSources };
 }
 
 async function scrapeAshby(config: CompanyBoardConfig): Promise<AtsJobListing[]> {
@@ -424,11 +455,14 @@ async function scrapeWorkable(config: CompanyBoardConfig): Promise<AtsJobListing
       return mapWorkableMarkdownJob(config.company ?? config.slug, cells, detailMarkdown);
     }),
   );
-  return settled.flatMap((result, index) => {
-    if (result.status === "fulfilled") return result.value ? [result.value] : [];
-    console.warn(`Skipped workable:${config.slug}:${index}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-    return [];
-  });
+  const jobs = settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
+  const failedIndex = settled.findIndex((result) => result.status === "rejected");
+  if (failedIndex >= 0) {
+    const failed = settled[failedIndex];
+    const reason = failed.status === "rejected" ? failed.reason : undefined;
+    throw new PartialBoardFailure(jobs, `Workable detail page ${failedIndex} failed: ${reason instanceof Error ? reason.message : String(reason)}`);
+  }
+  return jobs;
 }
 
 async function scrapeBoard(config: CompanyBoardConfig): Promise<AtsJobListing[]> {
@@ -461,27 +495,30 @@ async function runLimited<T, R>(items: T[], concurrency: number, worker: (item: 
   return results;
 }
 
-export async function scrapeCompanyBoards(configs = CURATED_COMPANY_BOARDS): Promise<AtsJobListing[]> {
+export async function scrapeCompanyBoards(configs = CURATED_COMPANY_BOARDS): Promise<RefreshPayload<AtsJobListing>> {
   const settled = await runLimited(configs, 4, scrapeBoard);
   const jobs: AtsJobListing[] = [];
+  const failedSources: string[] = [];
   settled.forEach((result, index) => {
     const config = configs[index];
     if (result.status === "fulfilled") {
       jobs.push(...result.value);
     } else {
+      if (result.reason instanceof PartialBoardFailure) jobs.push(...result.reason.jobs);
       console.warn(`Skipped ${config.provider}:${config.slug}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`${config.provider}:${config.slug}`);
     }
   });
-  jobs.push(...await scrapeGreptileCareers());
-  jobs.push(...await scrapePostHogCareers());
-  jobs.push(...await scrapeGitHubCareers());
-  jobs.push(...await scrapeNousResearchCareers());
-  return dedupeAtsJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
+  for (const result of await Promise.all([scrapeGreptileCareers(), scrapePostHogCareers(), scrapeGitHubCareers(), scrapeNousResearchCareers()])) {
+    jobs.push(...result.jobs);
+    failedSources.push(...result.failedSources);
+  }
+  return refreshPayload("company_board", dedupeAtsJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)), failedSources);
 }
 
 if (Bun.main === import.meta.path) {
   scrapeCompanyBoards()
-    .then((jobs) => console.log(JSON.stringify({ source: "company_board", jobs }, null, 2)))
+    .then((payload) => console.log(JSON.stringify(payload, null, 2)))
     .catch((error) => {
       console.error("Company-board scraper failed:", error);
       process.exit(1);
