@@ -253,7 +253,6 @@ export default function JobsPage() {
           <option value="sf-bay">Area: SF Bay</option>
           <option value="seattle">Area: Seattle</option>
           <option value="denver-boulder">Area: Denver/Boulder</option>
-          <option value="spain">Area: Spain maybe</option>
         </select>
         <input value={remote} onChange={(e) => setFilter({ remote: e.target.value })} placeholder="remote / hybrid / onsite" className="neon-input rounded-[2px] px-3 py-2 text-sm outline-none" />
         <select value={sort} onChange={(e) => setFilter({ sort: e.target.value as JobSortOption })} className="neon-input rounded-[2px] px-3 py-2 text-sm outline-none" aria-label="Sort jobs">

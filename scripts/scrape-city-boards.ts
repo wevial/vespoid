@@ -1,4 +1,5 @@
 import { parseBuiltinJobsFromHtml, type BuiltinCity, type CityBoardJobListing } from "../src/lib/city-board-jobs";
+import { refreshPayload, type RefreshPayload } from "../src/lib/refresh-payload";
 
 interface CityBoardRoute {
   city: BuiltinCity;
@@ -44,35 +45,44 @@ async function fetchBuiltinHtml(path: string) {
   return response.text();
 }
 
-async function scrapeRoute(route: CityBoardRoute): Promise<CityBoardJobListing[]> {
+async function scrapeRoute(route: CityBoardRoute): Promise<{ jobs: CityBoardJobListing[]; failedSources: string[] }> {
   const pages = await Promise.allSettled(route.paths.map(fetchBuiltinHtml));
   const jobs: CityBoardJobListing[] = [];
+  const failedSources: string[] = [];
   pages.forEach((result, index) => {
     if (result.status === "fulfilled") {
       jobs.push(...parseBuiltinJobsFromHtml(result.value, route.city));
     } else {
       console.warn(`Skipped ${route.label} ${route.paths[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`builtin:${route.city}:${index}`);
     }
   });
-  return jobs;
+  return { jobs, failedSources };
 }
 
-export async function scrapeCityBoards(routes = BUILTIN_CITY_ROUTES): Promise<CityBoardJobListing[]> {
+export async function scrapeCityBoards(routes = BUILTIN_CITY_ROUTES): Promise<RefreshPayload<CityBoardJobListing>> {
   const settled = await Promise.allSettled(routes.map(scrapeRoute));
   const jobs: CityBoardJobListing[] = [];
+  const failedSources: string[] = [];
   settled.forEach((result, index) => {
     if (result.status === "fulfilled") {
-      jobs.push(...result.value);
+      jobs.push(...result.value.jobs);
+      failedSources.push(...result.value.failedSources);
     } else {
       console.warn(`Skipped ${routes[index].label}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`builtin:${routes[index].city}`);
     }
   });
-  return Array.from(new Map(jobs.map((job) => [job.url, job])).values()).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
+  return refreshPayload(
+    "city_board",
+    Array.from(new Map(jobs.map((job) => [job.url, job])).values()).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)),
+    failedSources,
+  );
 }
 
 if (Bun.main === import.meta.path) {
   scrapeCityBoards()
-    .then((jobs) => console.log(JSON.stringify({ source: "city_board", jobs }, null, 2)))
+    .then((payload) => console.log(JSON.stringify(payload, null, 2)))
     .catch((error) => {
       console.error("City-board scraper failed:", error);
       process.exit(1);

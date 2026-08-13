@@ -49,4 +49,8 @@ describe("job list URL query state", () => {
     expect(jobListFiltersFromSearchParams(query).status).toBe("unread");
     expect(JOB_LIST_STATUS_FILTER_OPTIONS[0]).toEqual({ value: "unread", label: "Unread" });
   });
+
+  test("drops the retired Spain area filter from old URLs", () => {
+    expect(jobListFiltersFromSearchParams(new URLSearchParams("area=spain")).area).toBe("all");
+  });
 });

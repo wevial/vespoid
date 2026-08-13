@@ -134,8 +134,9 @@ export function buildHiringPostCurationPrompt(posts: HNRawHiringPost[]): string 
 Target profile:
 - Product Engineer / Full-stack / Frontend-leaning Software Engineer.
 - Strong matches: TypeScript, JavaScript, React, Next.js, Go, Python, frontend/product engineering, devtools, AI/LLM, APIs, SDKs, workflow automation, platform/internal tools.
-- Locations: US remote, Seattle/Bellevue/Redmond, SF Bay Area, Denver/Boulder. Spain-only is possible/uncertain. Reject EU/EMEA/APAC/Canada-only roles unless the post explicitly includes US eligibility.
+- Locations: US remote, Seattle/Bellevue/Redmond, SF Bay Area, Denver/Boulder. Reject other location-restricted roles unless the post explicitly includes US eligibility.
 - Compensation: missing comp is allowed. Prefer $180k+. Reject explicit comp below $170k max, except Denver/Boulder can be acceptable around $150k+.
+- Seniority: Staff+ and explicit 10–11 years are reach signals, not automatic rejects. Keep Principal and Senior Staff only when the role is an exceptional product-facing match. Reject Architect, Director, VP, CTO, and explicit requirements of 12+ years.
 - reject Product Manager, Program Manager, Project Manager, Design, Designer, Sales, Account Executive, Marketing, Customer Success, Recruiting, pure Data Scientist, pure ML Research, internships, and agency/staffing posts.
 
 Task:

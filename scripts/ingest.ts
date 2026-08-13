@@ -1,7 +1,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import { isJobSource, type JobSource } from "../src/lib/job-sources";
-import { parseIngestOptions, shouldMarkStale } from "../src/lib/ingest-options";
+import { parseIngestOptions, selectStaleIds } from "../src/lib/ingest-options";
 
 const CONVEX_URL = process.env.CONVEX_URL;
 if (!CONVEX_URL) {
@@ -92,13 +92,13 @@ function isIngestJob(job: RawJob): job is IngestJob {
 
 process.stdin.on("end", async () => {
   try {
-    const { jobs } = JSON.parse(input) as { jobs?: RawJob[] };
+    const { jobs, complete } = JSON.parse(input) as { jobs?: RawJob[]; complete?: unknown };
     if (!Array.isArray(jobs)) throw new Error("Expected 'jobs' array in input JSON");
 
     const validJobs = jobs.filter(isIngestJob);
     const skipped = jobs.length - validJobs.length;
     const activeBefore = await client.query(api.jobs.listActiveJobs);
-    const currentUrlsBySource = new Map<IngestJob["source"], Set<string>>();
+    const currentUrlsBySource = new Map<string, Set<string>>();
     for (const job of validJobs) {
       const urls = currentUrlsBySource.get(job.source) ?? new Set<string>();
       urls.add(job.url);
@@ -115,14 +115,7 @@ process.stdin.on("end", async () => {
       }
     }
 
-    const staleIds = shouldMarkStale(ingestOptions)
-      ? activeBefore
-        .filter((job) => {
-          const sourceUrls = currentUrlsBySource.get(job.source);
-          return sourceUrls !== undefined && !sourceUrls.has(job.url);
-        })
-        .map((job) => job._id)
-      : [];
+    const staleIds = selectStaleIds(activeBefore, currentUrlsBySource, ingestOptions, { complete });
     if (staleIds.length > 0) {
       await client.mutation(api.jobs.markStaleBatch, { jobIds: staleIds });
     }
