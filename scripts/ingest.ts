@@ -52,6 +52,7 @@ interface RawJob {
   url?: unknown;
   title?: unknown;
   company?: unknown;
+  refreshScope?: unknown;
   [key: string]: unknown;
 }
 
@@ -60,6 +61,7 @@ interface IngestJob {
   title: string;
   company: string;
   source: JobSource;
+  refreshScope?: string;
   description?: string;
   salaryRange?: string;
   location?: string;
@@ -80,6 +82,7 @@ function isIngestJob(job: RawJob): job is IngestJob {
     typeof job.title === "string" &&
     typeof job.company === "string" &&
     isSource(job.source) &&
+    (job.refreshScope === undefined || typeof job.refreshScope === "string") &&
     (job.description === undefined || typeof job.description === "string") &&
     (job.salaryRange === undefined || typeof job.salaryRange === "string") &&
     (job.location === undefined || typeof job.location === "string") &&
@@ -92,17 +95,28 @@ function isIngestJob(job: RawJob): job is IngestJob {
 
 process.stdin.on("end", async () => {
   try {
-    const { jobs, complete } = JSON.parse(input) as { jobs?: RawJob[]; complete?: unknown };
+    const { jobs, complete, successfulScopes, failedScopes } = JSON.parse(input) as {
+      jobs?: RawJob[];
+      complete?: unknown;
+      successfulScopes?: unknown;
+      failedScopes?: unknown;
+    };
     if (!Array.isArray(jobs)) throw new Error("Expected 'jobs' array in input JSON");
 
     const validJobs = jobs.filter(isIngestJob);
     const skipped = jobs.length - validJobs.length;
     const activeBefore = await client.query(api.jobs.listActiveJobs);
     const currentUrlsBySource = new Map<string, Set<string>>();
+    const currentUrlsByScope = new Map<string, Set<string>>();
     for (const job of validJobs) {
       const urls = currentUrlsBySource.get(job.source) ?? new Set<string>();
       urls.add(job.url);
       currentUrlsBySource.set(job.source, urls);
+      if (job.refreshScope) {
+        const scopeUrls = currentUrlsByScope.get(job.refreshScope) ?? new Set<string>();
+        scopeUrls.add(job.url);
+        currentUrlsByScope.set(job.refreshScope, scopeUrls);
+      }
     }
 
     let count = 0;
@@ -115,7 +129,16 @@ process.stdin.on("end", async () => {
       }
     }
 
-    const staleIds = selectStaleIds(activeBefore, currentUrlsBySource, ingestOptions, { complete });
+    const refresh = {
+      complete,
+      successfulScopes: Array.isArray(successfulScopes) && successfulScopes.every((scope) => typeof scope === "string")
+        ? successfulScopes
+        : undefined,
+      failedScopes: Array.isArray(failedScopes) && failedScopes.every((scope) => typeof scope === "string")
+        ? failedScopes
+        : undefined,
+    };
+    const staleIds = selectStaleIds(activeBefore, currentUrlsBySource, ingestOptions, refresh, currentUrlsByScope);
     if (staleIds.length > 0) {
       await client.mutation(api.jobs.markStaleBatch, { jobIds: staleIds });
     }

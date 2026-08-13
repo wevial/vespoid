@@ -6,6 +6,7 @@ export interface AtsJobListing {
   title: string;
   company: string;
   source: "company_board";
+  refreshScope?: string;
   description: string;
   salaryRange?: string;
   location?: string;

@@ -4,6 +4,8 @@ export interface IngestOptions {
 
 export interface RefreshMetadata {
   complete?: unknown;
+  successfulScopes?: string[];
+  failedScopes?: string[];
 }
 
 export function parseIngestOptions(argv: string[]): IngestOptions {
@@ -20,14 +22,21 @@ export function shouldMarkStale(options: IngestOptions, refresh: RefreshMetadata
 }
 
 export function selectStaleIds<Id>(
-  activeJobs: Array<{ _id: Id; source: string; url: string }>,
+  activeJobs: Array<{ _id: Id; source: string; url: string; refreshScope?: string }>,
   currentUrlsBySource: Map<string, Set<string>>,
   options: IngestOptions,
   refresh: RefreshMetadata = {},
+  currentUrlsByScope: Map<string, Set<string>> = new Map(),
 ): Id[] {
-  if (!shouldMarkStale(options, refresh)) return [];
+  const scopedPartialRefresh = options.markStale && refresh.complete === false && refresh.successfulScopes !== undefined;
+  if (!shouldMarkStale(options, refresh) && !scopedPartialRefresh) return [];
   return activeJobs
     .filter((job) => {
+      if (job.source === "company_board" && refresh.complete === false && refresh.successfulScopes !== undefined) {
+        if (!job.refreshScope || !refresh.successfulScopes.includes(job.refreshScope)) return false;
+        const scopeUrls = currentUrlsByScope.get(job.refreshScope);
+        return scopeUrls !== undefined && !scopeUrls.has(job.url);
+      }
       const sourceUrls = currentUrlsBySource.get(job.source);
       return sourceUrls !== undefined && !sourceUrls.has(job.url);
     })

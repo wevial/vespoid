@@ -29,10 +29,26 @@ describe("refresh completeness", () => {
       source: "company_board",
       complete: false,
       failedSources: ["github-careers"],
+      successfulScopes: ["ashby:example", "greptile-careers", "nousresearch-careers", "posthog-careers"],
+      failedScopes: ["github-careers"],
     });
     expect(payload.jobs).toEqual([]);
   });
 
+  test("reports an empty successful company board as a successful scope", async () => {
+    mockFetch(() => successfulResponse());
+
+    const payload = await scrapeCompanyBoards([{ provider: "ashby", slug: "empty-board" }]);
+
+    expect(payload).toMatchObject({
+      source: "company_board",
+      complete: true,
+      failedSources: [],
+      successfulScopes: ["ashby:empty-board", "github-careers", "greptile-careers", "nousresearch-careers", "posthog-careers"],
+      failedScopes: [],
+      jobs: [],
+    });
+  });
   test("marks a city-board payload incomplete when one Built In page fails", async () => {
     mockFetch((url) => url.endsWith("/failed")
       ? new Response("unavailable", { status: 503, statusText: "Service Unavailable" })
@@ -93,6 +109,7 @@ describe("refresh completeness", () => {
       expect.objectContaining({
         company: "Nous Research",
         url: "https://nousresearch.com/full-stack-engineer/",
+        refreshScope: "nousresearch-careers",
       }),
     ]));
   });
@@ -126,5 +143,22 @@ describe("refresh completeness", () => {
 
     expect(selectStaleIds(active, currentUrlsBySource, parseIngestOptions([]), { complete: false })).toEqual([]);
     expect(selectStaleIds(active, currentUrlsBySource, parseIngestOptions([]), { complete: true })).toEqual(["missing"]);
+  });
+
+  test("reconciles successful company scopes while retaining omissions from failed scopes", () => {
+    const active = [
+      { _id: "good-present", source: "company_board", refreshScope: "ashby:good", url: "https://example.com/good-present" },
+      { _id: "good-missing", source: "company_board", refreshScope: "ashby:good", url: "https://example.com/good-missing" },
+      { _id: "bad-present", source: "company_board", refreshScope: "ashby:bad", url: "https://example.com/bad-present" },
+      { _id: "bad-missing", source: "company_board", refreshScope: "ashby:bad", url: "https://example.com/bad-missing" },
+      { _id: "legacy-missing", source: "company_board", url: "https://example.com/legacy-missing" },
+    ];
+    const currentUrlsBySource = new Map([["company_board", new Set(["https://example.com/good-present", "https://example.com/bad-present"])]]) as Map<string, Set<string>>;
+    const currentUrlsByScope = new Map([["ashby:good", new Set(["https://example.com/good-present"])]]) as Map<string, Set<string>>;
+    const refresh = { complete: false, successfulScopes: ["ashby:good"], failedScopes: ["ashby:bad"] };
+
+    const staleIds = selectStaleIds(active, currentUrlsBySource, parseIngestOptions([]), refresh, currentUrlsByScope);
+
+    expect(staleIds).toEqual(["good-missing"]);
   });
 });

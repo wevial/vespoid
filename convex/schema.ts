@@ -31,6 +31,7 @@ export default defineSchema({
     title: v.string(),
     company: v.string(),
     source: sourceValidator,
+    refreshScope: v.optional(v.string()),
     description: v.optional(v.string()),
     salaryRange: v.optional(v.string()),
     location: v.optional(v.string()),

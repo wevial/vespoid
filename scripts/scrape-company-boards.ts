@@ -478,6 +478,10 @@ async function scrapeBoard(config: CompanyBoardConfig): Promise<AtsJobListing[]>
   }
 }
 
+function withRefreshScope(jobs: AtsJobListing[], refreshScope: string): AtsJobListing[] {
+  return jobs.map((job) => ({ ...job, refreshScope }));
+}
+
 async function runLimited<T, R>(items: T[], concurrency: number, worker: (item: T, index: number) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
   const results = new Array<PromiseSettledResult<R>>(items.length);
   let nextIndex = 0;
@@ -499,21 +503,40 @@ export async function scrapeCompanyBoards(configs = CURATED_COMPANY_BOARDS): Pro
   const settled = await runLimited(configs, 4, scrapeBoard);
   const jobs: AtsJobListing[] = [];
   const failedSources: string[] = [];
+  const successfulScopes: string[] = [];
+  const failedScopes: string[] = [];
   settled.forEach((result, index) => {
     const config = configs[index];
+    const scope = `${config.provider}:${config.slug}`;
     if (result.status === "fulfilled") {
-      jobs.push(...result.value);
+      jobs.push(...withRefreshScope(result.value, scope));
+      successfulScopes.push(scope);
     } else {
-      if (result.reason instanceof PartialBoardFailure) jobs.push(...result.reason.jobs);
+      if (result.reason instanceof PartialBoardFailure) jobs.push(...withRefreshScope(result.reason.jobs, scope));
       console.warn(`Skipped ${config.provider}:${config.slug}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-      failedSources.push(`${config.provider}:${config.slug}`);
+      failedSources.push(scope);
+      failedScopes.push(scope);
     }
   });
-  for (const result of await Promise.all([scrapeGreptileCareers(), scrapePostHogCareers(), scrapeGitHubCareers(), scrapeNousResearchCareers()])) {
-    jobs.push(...result.jobs);
+  const customResults = await Promise.all([
+    scrapeGreptileCareers(),
+    scrapePostHogCareers(),
+    scrapeGitHubCareers(),
+    scrapeNousResearchCareers(),
+  ]);
+  const customScopes = ["greptile-careers", "posthog-careers", "github-careers", "nousresearch-careers"];
+  customResults.forEach((result, index) => {
+    const scope = customScopes[index];
+    jobs.push(...withRefreshScope(result.jobs, scope));
     failedSources.push(...result.failedSources);
-  }
-  return refreshPayload("company_board", dedupeAtsJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)), failedSources);
+    (result.failedSources.length === 0 ? successfulScopes : failedScopes).push(scope);
+  });
+  return refreshPayload(
+    "company_board",
+    dedupeAtsJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)),
+    failedSources,
+    { successful: successfulScopes, failed: failedScopes },
+  );
 }
 
 if (Bun.main === import.meta.path) {
