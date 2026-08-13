@@ -27,7 +27,7 @@ export const DEFAULT_JOB_LIST_FILTERS: JobListFilters = {
 const VALID_SOURCES = new Set(["", "hn", "wellfound", "yc", "company_board", "city_board"]);
 const VALID_STATUSES = new Set(["", "unread", "saved", "applied", "screen", "interview", "offer", "rejected", "archived"]);
 const VALID_SORTS = new Set(["fit", "date-desc", "salary-desc"]);
-const VALID_AREAS = new Set(["all", "remote", "sf-bay", "seattle", "denver-boulder", "spain"]);
+const VALID_AREAS = new Set(["all", "remote", "sf-bay", "seattle", "denver-boulder"]);
 
 export const JOB_LIST_STATUS_FILTER_OPTIONS: Array<{ value: Exclude<JobListStatusFilter, "">; label: string }> = [
   { value: "unread", label: "Unread" },

@@ -98,6 +98,10 @@ describe("LLM hiring-post curation safety", () => {
     expect(prompt).toContain("Product Engineer / Full-stack / Frontend-leaning Software Engineer");
     expect(prompt).toContain("Do not invent");
     expect(prompt).toContain("reject Product Manager");
+    expect(prompt).toContain("Staff+ and explicit 10–11 years are reach signals, not automatic rejects");
+    expect(prompt).toContain("Principal and Senior Staff only when the role is an exceptional product-facing match");
+    expect(prompt).toContain("Reject Architect, Director, VP, CTO, and explicit requirements of 12+ years");
+    expect(prompt).not.toContain("Spain");
     expect(prompt).toContain("sourceCommentId");
     expect(prompt).toContain("Foxglove");
   });

@@ -1,4 +1,4 @@
-export type JobAreaFilter = "all" | "remote" | "sf-bay" | "seattle" | "denver-boulder" | "spain";
+export type JobAreaFilter = "all" | "remote" | "sf-bay" | "seattle" | "denver-boulder";
 
 export interface AreaFilterJob {
   location?: string;
@@ -6,7 +6,7 @@ export interface AreaFilterJob {
   fitReasons?: string[];
 }
 
-const AREA_PATTERNS: Record<Exclude<JobAreaFilter, "all" | "remote" | "spain">, RegExp> = {
+const AREA_PATTERNS: Record<Exclude<JobAreaFilter, "all" | "remote">, RegExp> = {
   "sf-bay": /\b(san francisco|sf\b|bay area|palo alto|mountain view|sunnyvale|san mateo|san jose|oakland|berkeley)\b/i,
   seattle: /\b(seattle|bellevue|redmond|kirkland|washington state|wa)\b/i,
   "denver-boulder": /\b(denver|boulder)\b/i,
@@ -31,7 +31,6 @@ export function matchesJobArea(job: AreaFilterJob, area: JobAreaFilter): boolean
     if (/^\s*remote\s*$/i.test(job.remoteStatus ?? "") && REGION_ONLY_PATTERN.test(job.location ?? "")) return true;
     return /^\s*remote\s*$/i.test(text) || /^\s*remote\s*$/i.test(job.location ?? "") || (!job.location && /^\s*remote\s*$/i.test(job.remoteStatus ?? ""));
   }
-  if (area === "spain") return /\b(spain|madrid|barcelona)\b/i.test(text) || (job.fitReasons ?? []).includes("possible Spain eligibility");
   return AREA_PATTERNS[area].test(text);
 }
 

@@ -388,7 +388,7 @@ describe("target job fit", () => {
     expect(fit.rejectionReasons).not.toContain("outside work authorization");
   });
 
-  test("treats Spain-only roles as possible but uncertain instead of standard EU eligible", () => {
+  test("rejects Spain-only roles outside the target locations", () => {
     const fit = classifyJobFit({
       title: "Senior Product Engineer",
       company: "Madrid AI Tools",
@@ -397,30 +397,166 @@ describe("target job fit", () => {
       description: "TypeScript, React, Python, and AI product work.",
     });
 
-    expect(fit.isRelevant).toBe(true);
-    expect(fit.reasons).toContain("possible Spain eligibility");
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("outside target locations");
+    expect(fit.reasons).not.toContain("possible Spain eligibility");
   });
 
-  test("calls out roles with very senior experience expectations", () => {
+  test("rejects Spain-only remote roles as outside US work authorization", () => {
+    const fit = classifyJobFit({
+      title: "Senior Product Engineer",
+      company: "Barcelona AI Tools",
+      location: "Barcelona, Spain",
+      remoteStatus: "Remote Spain",
+      description: "TypeScript, React, Python, and AI product work.",
+    });
+
+    expect(fit.isRelevant).toBe(false);
+    expect(fit.rejectionReasons).toContain("outside work authorization");
+  });
+
+  test("keeps Staff+ and explicit 10-year requirements as visible reach roles", () => {
     const staffPlus = classifyJobFit({
-      title: "Staff+ Software Engineer, Developer Productivity",
+      title: "Staff+ Software Engineer, Full-stack",
       company: "Anthropic",
       location: "Seattle, WA",
       remoteStatus: "hybrid",
-      description: "Build developer infrastructure with TypeScript and Python. Strong candidates may have 15+ years of experience in a Software Engineer role.",
+      description: "Build user-facing TypeScript and React AI products.",
     });
     const explicitYears = classifyJobFit({
       title: "Model Performance Software Engineer, Claude Code",
       company: "Anthropic",
       location: "San Francisco, CA",
       remoteStatus: "hybrid",
-      description: "Build Claude Code infrastructure with TypeScript and Python. Have 10+ years of software engineering experience with Staff or Principal engineer scope.",
+      description: "Build Claude Code developer tools with TypeScript and Python. The candidate has 11+ years in software engineering.",
     });
 
     expect(staffPlus.isRelevant).toBe(true);
-    expect(staffPlus.reasons).toContain("very senior expectations");
+    expect(staffPlus.reasons).toContain("seniority reach");
     expect(explicitYears.isRelevant).toBe(true);
-    expect(explicitYears.reasons).toContain("very senior expectations");
+    expect(explicitYears.reasons).toContain("seniority reach");
+  });
+
+  test("keeps Principal and Senior Staff only for exceptional product-facing matches", () => {
+    const exceptionalPrincipal = classifyJobFit({
+      title: "Principal Product Engineer",
+      company: "Gradial",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      salaryRange: "$180k - $240k",
+      description: "Own a user-facing TypeScript, React, and Python AI workflow product end to end.",
+    });
+    const genericPrincipal = classifyJobFit({
+      title: "Principal Software Engineer",
+      company: "Generic AI",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Build TypeScript and Python AI services.",
+    });
+
+    expect(exceptionalPrincipal.isRelevant).toBe(true);
+    expect(exceptionalPrincipal.reasons).toContain("seniority reach");
+    expect(genericPrincipal.isRelevant).toBe(false);
+    expect(genericPrincipal.rejectionReasons).toContain("seniority reach without exceptional role fit");
+  });
+
+  test("hard-rejects executive titles and explicit 12-plus-year requirements", () => {
+    const architect = classifyJobFit({
+      title: "Principal Product Engineer / Architect",
+      company: "Remote AI",
+      location: "Remote US",
+      remoteStatus: "remote",
+      salaryRange: "$200k - $260k",
+      description: "Build user-facing TypeScript and React AI products.",
+    });
+    const twelveYears = classifyJobFit({
+      title: "Staff+ Software Engineer, Developer Productivity",
+      company: "Anthropic",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      description: "Build TypeScript and Python developer tools. Requires 12+ years of software engineering experience.",
+    });
+    const bareTwelveYears = classifyJobFit({
+      title: "Staff+ Product Engineer",
+      company: "Remote AI",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Build user-facing TypeScript and React AI products. 12+ years of software engineering.",
+    });
+    const parentheticalFifteenYears = classifyJobFit({
+      title: "Staff+ Software Engineer, Developer Productivity",
+      company: "Anthropic",
+      location: "Seattle, WA",
+      remoteStatus: "hybrid",
+      description: "Build TypeScript developer tools. Strong candidates may have: 15+ years (not including internships or co-ops) of experience in a Software Engineer role.",
+    });
+    const leadingTwelveYears = classifyJobFit({
+      title: "Staff+ Product Engineer",
+      company: "Remote AI",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Build user-facing AI products. 12+ years leading engineering teams.",
+    });
+    const possessiveTwelveYears = classifyJobFit({
+      title: "Staff+ Product Engineer",
+      company: "Remote AI",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Build user-facing AI products. 12+ years’ experience building products.",
+    });
+    const vicePresident = classifyJobFit({
+      title: "Vice-President, Product Engineering",
+      company: "Remote AI",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Lead user-facing TypeScript and React AI product engineering.",
+    });
+
+    expect(architect.isRelevant).toBe(false);
+    expect(architect.rejectionReasons).toContain("outside seniority range");
+    expect(twelveYears.isRelevant).toBe(false);
+    expect(twelveYears.rejectionReasons).toContain("outside seniority range");
+    expect(bareTwelveYears.isRelevant).toBe(false);
+    expect(bareTwelveYears.rejectionReasons).toContain("outside seniority range");
+    expect(parentheticalFifteenYears.isRelevant).toBe(false);
+    expect(parentheticalFifteenYears.rejectionReasons).toContain("outside seniority range");
+    expect(leadingTwelveYears.isRelevant).toBe(false);
+    expect(leadingTwelveYears.rejectionReasons).toContain("outside seniority range");
+    expect(possessiveTwelveYears.isRelevant).toBe(false);
+    expect(possessiveTwelveYears.rejectionReasons).toContain("outside seniority range");
+    expect(vicePresident.isRelevant).toBe(false);
+    expect(vicePresident.rejectionReasons).toContain("outside seniority range");
+  });
+
+  test("does not mistake company or team history for a candidate experience requirement", () => {
+    const companyAge = classifyJobFit({
+      title: "Staff+ Product Engineer",
+      company: "Mature Startup",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Founded 15 years ago, we bring deep experience to user-facing TypeScript and React AI workflows.",
+    });
+    const teamExperience = classifyJobFit({
+      title: "Staff+ Product Engineer",
+      company: "Experienced Team",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "Our team has 20 years of combined experience building user-facing TypeScript and React AI workflows.",
+    });
+    const leadingWithTeamExperience = classifyJobFit({
+      title: "Staff+ Product Engineer",
+      company: "Experienced Team",
+      location: "Remote US",
+      remoteStatus: "remote",
+      description: "With 20 years of combined experience, our team builds user-facing TypeScript and React AI workflows.",
+    });
+
+    expect(companyAge.isRelevant).toBe(true);
+    expect(companyAge.rejectionReasons).not.toContain("outside seniority range");
+    expect(teamExperience.isRelevant).toBe(true);
+    expect(teamExperience.rejectionReasons).not.toContain("outside seniority range");
+    expect(leadingWithTeamExperience.isRelevant).toBe(true);
+    expect(leadingWithTeamExperience.rejectionReasons).not.toContain("outside seniority range");
   });
 
   test("boosts Seattle and Washington roles above otherwise similar non-WA target locations", () => {
