@@ -18,10 +18,10 @@ interface Options {
 const REASONING_LEVELS = new Set<HermesReasoning>(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 
 function parseOptions(argv: string[]): Options {
-  const configuredReasoning = (process.env.VESPOID_LLM_REASONING ?? "low") as HermesReasoning;
+  const configuredReasoning = (process.env.VESPOID_LLM_REASONING ?? "max") as HermesReasoning;
   const options: Options = {
     batchSize: 8,
-    model: process.env.VESPOID_LLM_MODEL ?? "gpt-5.6-sol",
+    model: process.env.VESPOID_LLM_MODEL ?? "gpt-5.6-luna",
     reasoning: configuredReasoning,
   };
   for (let index = 0; index < argv.length; index++) {
