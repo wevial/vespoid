@@ -1,4 +1,4 @@
-import { parseBuiltinJobsFromHtml, type BuiltinCity, type CityBoardJobListing } from "../src/lib/city-board-jobs";
+import { assertBuiltinJobPageHtml, builtinJobIdentity, parseBuiltinJobsFromHtml, type BuiltinCity, type CityBoardJobListing } from "../src/lib/city-board-jobs";
 import { refreshPayload, type RefreshPayload } from "../src/lib/refresh-payload";
 
 interface CityBoardRoute {
@@ -6,6 +6,13 @@ interface CityBoardRoute {
   label: string;
   paths: string[];
 }
+
+export interface ScrapeCityBoardsOptions {
+  requestDelayMs?: number;
+}
+
+const BUILTIN_PAGE_LIMIT = 5;
+const BUILTIN_REQUEST_DELAY_MS = 1_200;
 
 const BUILTIN_CITY_ROUTES: CityBoardRoute[] = [
   {
@@ -30,12 +37,14 @@ const BUILTIN_CITY_ROUTES: CityBoardRoute[] = [
   },
 ];
 
-function builtinUrl(path: string) {
-  return new URL(path, "https://builtin.com").toString();
+function builtinPageUrl(path: string, page: number) {
+  const url = new URL(path, "https://builtin.com");
+  if (page > 1) url.searchParams.set("page", String(page));
+  return url.toString();
 }
 
-async function fetchBuiltinHtml(path: string) {
-  const response = await fetch(builtinUrl(path), {
+async function fetchBuiltinHtml(url: string) {
+  const response = await fetch(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -45,37 +54,49 @@ async function fetchBuiltinHtml(path: string) {
   return response.text();
 }
 
-async function scrapeRoute(route: CityBoardRoute): Promise<{ jobs: CityBoardJobListing[]; failedSources: string[] }> {
-  const pages = await Promise.allSettled(route.paths.map(fetchBuiltinHtml));
-  const jobs: CityBoardJobListing[] = [];
-  const failedSources: string[] = [];
-  pages.forEach((result, index) => {
-    if (result.status === "fulfilled") {
-      jobs.push(...parseBuiltinJobsFromHtml(result.value, route.city));
-    } else {
-      console.warn(`Skipped ${route.label} ${route.paths[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-      failedSources.push(`builtin:${route.city}:${index}`);
-    }
-  });
-  return { jobs, failedSources };
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-export async function scrapeCityBoards(routes = BUILTIN_CITY_ROUTES): Promise<RefreshPayload<CityBoardJobListing>> {
-  const settled = await Promise.allSettled(routes.map(scrapeRoute));
+function deduplicateBuiltinJobs(jobs: CityBoardJobListing[]): CityBoardJobListing[] {
+  const firstSeen = new Map<string, CityBoardJobListing>();
+  for (const job of jobs) {
+    const identity = builtinJobIdentity(job.url);
+    if (!firstSeen.has(identity)) firstSeen.set(identity, job);
+  }
+  return Array.from(firstSeen.values());
+}
+
+export async function scrapeCityBoards(
+  routes = BUILTIN_CITY_ROUTES,
+  { requestDelayMs = BUILTIN_REQUEST_DELAY_MS }: ScrapeCityBoardsOptions = {},
+): Promise<RefreshPayload<CityBoardJobListing>> {
   const jobs: CityBoardJobListing[] = [];
   const failedSources: string[] = [];
-  settled.forEach((result, index) => {
-    if (result.status === "fulfilled") {
-      jobs.push(...result.value.jobs);
-      failedSources.push(...result.value.failedSources);
-    } else {
-      console.warn(`Skipped ${routes[index].label}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
-      failedSources.push(`builtin:${routes[index].city}`);
+  let attemptedPage = false;
+
+  for (const route of routes) {
+    for (const path of route.paths) {
+      for (let page = 1; page <= BUILTIN_PAGE_LIMIT; page += 1) {
+        if (attemptedPage) await sleep(requestDelayMs);
+        attemptedPage = true;
+        const url = builtinPageUrl(path, page);
+        try {
+          const html = await fetchBuiltinHtml(url);
+          assertBuiltinJobPageHtml(html);
+          jobs.push(...parseBuiltinJobsFromHtml(html, route.city));
+        } catch (error) {
+          console.warn(`Skipped ${route.label} ${path} page ${page}: ${error instanceof Error ? error.message : String(error)}`);
+          failedSources.push(`builtin:${route.city}:${path}:page:${page}`);
+          break;
+        }
+      }
     }
-  });
+  }
+
   return refreshPayload(
     "city_board",
-    Array.from(new Map(jobs.map((job) => [job.url, job])).values()).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)),
+    deduplicateBuiltinJobs(jobs).sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)),
     failedSources,
   );
 }

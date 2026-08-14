@@ -17,6 +17,20 @@ function successfulResponse(): Response {
   return new Response(JSON.stringify({ jobs: [] }), { status: 200 });
 }
 
+function builtinPage(jobs: unknown[] = []): Response {
+  return new Response(`<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { jobs } } })}</script>`, { status: 200 });
+}
+
+function builtinTargetJob(id: number, title = "Senior Full Stack Engineer") {
+  return {
+    title,
+    company: "ExampleCo",
+    location: "Seattle, WA",
+    url: `/job/${title.toLowerCase().replaceAll(" ", "-")}/${id}`,
+    description: "Build React and TypeScript products.",
+  };
+}
+
 describe("refresh completeness", () => {
   test("marks a company-board payload incomplete when the GitHub careers API fails", async () => {
     mockFetch((url) => url.includes("github.careers/api/jobs")
@@ -49,22 +63,117 @@ describe("refresh completeness", () => {
       jobs: [],
     });
   });
-  test("marks a city-board payload incomplete when one Built In page fails", async () => {
-    mockFetch((url) => url.endsWith("/failed")
-      ? new Response("unavailable", { status: 503, statusText: "Service Unavailable" })
-      : new Response("<html></html>", { status: 200 }));
+  test("requests Built In pages 1 through 5 in route order without exceeding the cap", async () => {
+    const requested: string[] = [];
+    mockFetch((url) => {
+      requested.push(url);
+      return builtinPage();
+    });
 
     const payload = await scrapeCityBoards([
-      { city: "seattle", label: "Built In Seattle", paths: ["/working", "/failed"] },
-    ]);
+      { city: "seattle", label: "Built In Seattle", paths: ["/jobs/seattle/dev-engineering"] },
+      { city: "remote", label: "Built In Remote", paths: ["/jobs/remote/dev-engineering"] },
+    ], { requestDelayMs: 0 });
 
-    expect(payload).toMatchObject({
-      source: "city_board",
-      complete: false,
-      failedSources: ["builtin:seattle:1"],
-    });
-    expect(payload.jobs).toEqual([]);
+    expect(requested).toEqual([
+      "https://builtin.com/jobs/seattle/dev-engineering",
+      "https://builtin.com/jobs/seattle/dev-engineering?page=2",
+      "https://builtin.com/jobs/seattle/dev-engineering?page=3",
+      "https://builtin.com/jobs/seattle/dev-engineering?page=4",
+      "https://builtin.com/jobs/seattle/dev-engineering?page=5",
+      "https://builtin.com/jobs/remote/dev-engineering",
+      "https://builtin.com/jobs/remote/dev-engineering?page=2",
+      "https://builtin.com/jobs/remote/dev-engineering?page=3",
+      "https://builtin.com/jobs/remote/dev-engineering?page=4",
+      "https://builtin.com/jobs/remote/dev-engineering?page=5",
+    ]);
+    expect(payload).toMatchObject({ complete: true, failedSources: [] });
   });
+
+  test("deduplicates Built In jobs globally by numeric identity with the first record winning", async () => {
+    mockFetch((url) => {
+      if (url === "https://builtin.com/jobs/seattle/dev-engineering") return builtinPage([builtinTargetJob(123, "First Full Stack Engineer")]);
+      if (url === "https://builtin.com/jobs/remote/dev-engineering") return builtinPage([builtinTargetJob(123, "Later Full Stack Engineer")]);
+      return builtinPage();
+    });
+
+    const payload = await scrapeCityBoards([
+      { city: "seattle", label: "Built In Seattle", paths: ["/jobs/seattle/dev-engineering"] },
+      { city: "remote", label: "Built In Remote", paths: ["/jobs/remote/dev-engineering"] },
+    ], { requestDelayMs: 0 });
+
+    expect(payload.jobs).toHaveLength(1);
+    expect(payload.jobs[0]).toMatchObject({ title: "First Full Stack Engineer", url: "https://builtin.com/job/first-full-stack-engineer/123" });
+  });
+
+  test("deduplicates Built In jobs globally by normalized canonical URL without a numeric identity", async () => {
+    mockFetch((url) => {
+      if (url === "https://builtin.com/jobs/seattle/dev-engineering") {
+        return builtinPage([{ ...builtinTargetJob(123), url: "/job/no-numeric-id?utm_source=seattle" }]);
+      }
+      if (url === "https://builtin.com/jobs/remote/dev-engineering") {
+        return builtinPage([{ ...builtinTargetJob(456, "Later Engineer"), url: "https://builtin.com/job/no-numeric-id#remote" }]);
+      }
+      return builtinPage();
+    });
+
+    const payload = await scrapeCityBoards([
+      { city: "seattle", label: "Built In Seattle", paths: ["/jobs/seattle/dev-engineering"] },
+      { city: "remote", label: "Built In Remote", paths: ["/jobs/remote/dev-engineering"] },
+    ], { requestDelayMs: 0 });
+
+    expect(payload.jobs).toHaveLength(1);
+    expect(payload.jobs[0]).toMatchObject({ title: "Senior Full Stack Engineer", url: "https://builtin.com/job/no-numeric-id?utm_source=seattle" });
+  });
+
+  test("continues after a valid page has no relevant jobs", async () => {
+    const requested: string[] = [];
+    mockFetch((url) => {
+      requested.push(url);
+      return url.endsWith("?page=2")
+        ? builtinPage([builtinTargetJob(456)])
+        : builtinPage([builtinTargetJob(999, "Customer Success Manager")]);
+    });
+
+    const payload = await scrapeCityBoards([
+      { city: "seattle", label: "Built In Seattle", paths: ["/jobs/seattle/dev-engineering"] },
+    ], { requestDelayMs: 0 });
+
+    expect(requested).toHaveLength(5);
+    expect(payload).toMatchObject({ complete: true, failedSources: [] });
+    expect(payload.jobs).toEqual([expect.objectContaining({ url: "https://builtin.com/job/senior-full-stack-engineer/456" })]);
+  });
+
+  for (const [name, failure] of [
+    ["403 response", () => new Response("forbidden", { status: 403, statusText: "Forbidden" })],
+    ["429 response", () => new Response("rate limited", { status: 429, statusText: "Too Many Requests" })],
+    ["challenge HTML", () => new Response("<html><title>Just a moment...</title></html>", { status: 200 })],
+    ["invalid page shape", () => new Response("<html><body>not a Built In jobs page</body></html>", { status: 200 })],
+    ["parser exception", () => new Response("<script id=\"__NEXT_DATA__\">not json</script>", { status: 200 })],
+  ] as const) {
+    test(`marks the city-board payload incomplete on a Built In ${name}`, async () => {
+      const requested: string[] = [];
+      mockFetch((url) => {
+        requested.push(url);
+        return url.endsWith("?page=2") ? failure() : builtinPage([builtinTargetJob(123)]);
+      });
+
+      const payload = await scrapeCityBoards([
+        { city: "seattle", label: "Built In Seattle", paths: ["/jobs/seattle/dev-engineering"] },
+      ], { requestDelayMs: 0 });
+
+      expect(requested).toEqual([
+        "https://builtin.com/jobs/seattle/dev-engineering",
+        "https://builtin.com/jobs/seattle/dev-engineering?page=2",
+      ]);
+      expect(payload).toMatchObject({
+        source: "city_board",
+        complete: false,
+        failedSources: ["builtin:seattle:/jobs/seattle/dev-engineering:page:2"],
+        jobs: [expect.objectContaining({ url: "https://builtin.com/job/senior-full-stack-engineer/123" })],
+      });
+    });
+  }
 
   test("marks a company-board payload incomplete when a configured Workable detail page fails", async () => {
     mockFetch((url) => {
@@ -115,11 +224,11 @@ describe("refresh completeness", () => {
   });
 
   test("marks a city-board payload complete when every Built In page succeeds", async () => {
-    mockFetch(() => new Response("<html></html>", { status: 200 }));
+    mockFetch(() => builtinPage());
 
     const payload = await scrapeCityBoards([
       { city: "seattle", label: "Built In Seattle", paths: ["/working"] },
-    ]);
+    ], { requestDelayMs: 0 });
 
     expect(payload).toEqual({ source: "city_board", jobs: [], complete: true, failedSources: [] });
   });

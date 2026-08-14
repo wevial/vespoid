@@ -153,3 +153,26 @@ export function parseBuiltinJobsFromHtml(html: string, city: BuiltinCity): CityB
   const jobs = cards.map((card) => mapBuiltinJobCard(card, city)).filter((job): job is CityBoardJobListing => Boolean(job));
   return Array.from(new Map(jobs.map((job) => [job.url, job])).values());
 }
+
+export function assertBuiltinJobPageHtml(html: string): void {
+  const dom = new JSDOM(html);
+  const text = `${dom.window.document.title} ${dom.window.document.body.textContent ?? ""}`;
+  if (/\b(just a moment|captcha|access denied|security check|verify you are human)\b/i.test(text)) {
+    throw new Error("Built In returned a challenge page");
+  }
+  if (!dom.window.document.querySelector("#__NEXT_DATA__, [data-id='job-card']")) {
+    throw new Error("Built In page has no recognizable job-listing shape");
+  }
+}
+
+export function builtinJobIdentity(url: string): string {
+  const parsed = new URL(url, "https://builtin.com");
+  if (parsed.hostname === "www.builtin.com") parsed.hostname = "builtin.com";
+  if (parsed.origin === "https://builtin.com") {
+    const numericId = parsed.pathname.match(/\/(\d+)\/?$/)?.[1];
+    if (numericId) return `builtin:id:${numericId}`;
+    parsed.search = "";
+    parsed.hash = "";
+  }
+  return `builtin:url:${parsed.toString()}`;
+}
