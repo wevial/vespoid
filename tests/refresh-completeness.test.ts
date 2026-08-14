@@ -149,6 +149,8 @@ describe("refresh completeness", () => {
     ["429 response", () => new Response("rate limited", { status: 429, statusText: "Too Many Requests" })],
     ["challenge HTML", () => new Response("<html><title>Just a moment...</title></html>", { status: 200 })],
     ["invalid page shape", () => new Response("<html><body>not a Built In jobs page</body></html>", { status: 200 })],
+    ["parseable Next payload without a listing", () => new Response("<script id=\"__NEXT_DATA__\">{}</script>", { status: 200 })],
+    ["parseable Next payload with a missing jobs array", () => new Response("<script id=\"__NEXT_DATA__\">{\"props\":{\"pageProps\":{}}}</script>", { status: 200 })],
     ["parser exception", () => new Response("<script id=\"__NEXT_DATA__\">not json</script>", { status: 200 })],
   ] as const) {
     test(`marks the city-board payload incomplete on a Built In ${name}`, async () => {

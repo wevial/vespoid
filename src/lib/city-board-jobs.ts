@@ -130,6 +130,11 @@ function nextDataPayload(html: string): unknown | undefined {
   return JSON.parse(script);
 }
 
+function hasBuiltinJobListingPayload(payload: unknown): boolean {
+  if (!isObject(payload) || !isObject(payload.props) || !isObject(payload.props.pageProps)) return false;
+  return Array.isArray(payload.props.pageProps.jobs);
+}
+
 function parseBuiltinCardsFromDom(html: string): BuiltinJobCard[] {
   const dom = new JSDOM(html);
   return Array.from(dom.window.document.querySelectorAll<HTMLElement>("[data-id='job-card']")).map((element) => {
@@ -160,7 +165,14 @@ export function assertBuiltinJobPageHtml(html: string): void {
   if (/\b(just a moment|captcha|access denied|security check|verify you are human)\b/i.test(text)) {
     throw new Error("Built In returned a challenge page");
   }
-  if (!dom.window.document.querySelector("#__NEXT_DATA__, [data-id='job-card']")) {
+  const nextData = dom.window.document.querySelector("#__NEXT_DATA__");
+  if (nextData) {
+    if (!hasBuiltinJobListingPayload(JSON.parse(nextData.textContent ?? ""))) {
+      throw new Error("Built In page has no recognizable job-listing shape");
+    }
+    return;
+  }
+  if (!dom.window.document.querySelector("[data-id='job-card']")) {
     throw new Error("Built In page has no recognizable job-listing shape");
   }
 }
