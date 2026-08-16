@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 import os
 import sys
 from pathlib import Path
@@ -53,7 +54,16 @@ def main() -> int:
         max_tokens=6000,
     )
     agent._persist_disabled = True
-    result = agent.run_conversation(prompt)
+    # Hermes writes retry/status diagnostics to stdout. Keep this bridge's
+    # stdout machine-readable by routing those diagnostics to stderr.
+    with redirect_stdout(sys.stderr):
+        result = agent.run_conversation(prompt)
+
+    if result.get("failed") is True or result.get("completed") is False:
+        error = str(result.get("error") or "provider returned an incomplete result")
+        print(f"Hermes provider inference failed: {error}", file=sys.stderr)
+        return 1
+
     response = (result.get("final_response") or "").strip()
     if not response:
         print("Hermes returned no final response", file=sys.stderr)
