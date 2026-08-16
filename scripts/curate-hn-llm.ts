@@ -39,9 +39,76 @@ function parseOptions(argv: string[]): Options {
   return options;
 }
 
-function parseJsonPayload(value: string): unknown {
+function isCuratedPayload(value: unknown): boolean {
+  const jobs = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as { jobs?: unknown }).jobs)
+      ? (value as { jobs: unknown[] }).jobs
+      : null;
+
+  return (
+    jobs !== null &&
+    jobs.length > 0 &&
+    jobs.every((job) => job !== null && typeof job === "object" && !Array.isArray(job))
+  );
+}
+
+function findEmbeddedJson(value: string, opener: "[" | "{"): unknown | undefined {
+  for (let start = value.indexOf(opener); start >= 0; start = value.indexOf(opener, start + 1)) {
+    const stack: string[] = [];
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < value.length; index += 1) {
+      const character = value[index];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === "\\") {
+          escaped = true;
+        } else if (character === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+      } else if (character === "[" || character === "{") {
+        stack.push(character);
+      } else if (character === "]" || character === "}") {
+        const expected = character === "]" ? "[" : "{";
+        if (stack.pop() !== expected) break;
+
+        if (stack.length === 0) {
+          try {
+            const parsed = JSON.parse(value.slice(start, index + 1));
+            if (isCuratedPayload(parsed)) return parsed;
+          } catch {
+            // Keep looking for the next balanced JSON candidate.
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function parseJsonPayload(value: string): unknown {
   const trimmed = value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-  return JSON.parse(trimmed);
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    for (const opener of ["[", "{"] as const) {
+      const parsed = findEmbeddedJson(trimmed, opener);
+      if (parsed !== undefined) return parsed;
+    }
+    throw error;
+  }
 }
 
 function parseCuratedDrafts(value: string): LLMCuratedJobDraft[] {
