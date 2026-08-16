@@ -30,7 +30,7 @@ export async function runHermesCodexPrompt(
     bridgePath: options.bridgePath ?? process.env.VESPOID_HERMES_BRIDGE ?? join(import.meta.dir, "..", "hermes-codex-oauth.py"),
     pythonPath: options.pythonPath ?? process.env.HERMES_PYTHON ?? join(agentDir, "venv", "bin", "python"),
     model: options.model ?? process.env.VESPOID_LLM_MODEL ?? "gpt-5.6-luna",
-    reasoning: options.reasoning ?? (process.env.VESPOID_LLM_REASONING as HermesReasoning | undefined) ?? "max",
+    reasoning: options.reasoning ?? (process.env.VESPOID_LLM_REASONING as HermesReasoning | undefined) ?? "high",
   };
 
   const processHandle = Bun.spawn({

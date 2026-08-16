@@ -40,13 +40,13 @@ async function runFakeHermesBridge(result: Record<string, unknown>) {
 }
 
 describe("Hermes Codex OAuth curation runner", () => {
-  test("uses GPT-5.6 Luna with max reasoning and the Hermes OAuth runtime", () => {
+  test("uses GPT-5.6 Luna with high reasoning and the Hermes OAuth runtime", () => {
     expect(
       buildHermesCodexCommand({
         bridgePath: "/app/scripts/hermes-codex-oauth.py",
         pythonPath: "/opt/hermes-python",
         model: "gpt-5.6-luna",
-        reasoning: "max",
+        reasoning: "high",
       }),
     ).toEqual([
       "/opt/hermes-python",
@@ -54,7 +54,7 @@ describe("Hermes Codex OAuth curation runner", () => {
       "--model",
       "gpt-5.6-luna",
       "--reasoning",
-      "max",
+      "high",
     ]);
   });
 

@@ -13,7 +13,7 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="gpt-5.6-luna")
-    parser.add_argument("--reasoning", default="max")
+    parser.add_argument("--reasoning", default="high")
     args = parser.parse_args()
 
     prompt = sys.stdin.read().strip()
