@@ -40,6 +40,7 @@ describe("curated company board list", () => {
         { provider: "greenhouse", slug: "truveta" },
         { provider: "greenhouse", slug: "phaidra" },
         { provider: "ashby", slug: "greptile", company: "Greptile" },
+        { provider: "ashby", slug: "coderabbit", company: "CodeRabbit" },
         { provider: "ashby", slug: "socket", company: "Socket" },
       ]),
     );

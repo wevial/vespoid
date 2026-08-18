@@ -46,6 +46,7 @@ export const CURATED_COMPANY_BOARDS: CompanyBoardConfig[] = [
   { provider: "greenhouse", slug: "truveta" },
   { provider: "greenhouse", slug: "phaidra" },
   { provider: "ashby", slug: "greptile", company: "Greptile" },
+  { provider: "ashby", slug: "coderabbit", company: "CodeRabbit" },
   { provider: "ashby", slug: "cursor", company: "Cursor" },
   { provider: "ashby", slug: "modal", company: "Modal" },
   { provider: "ashby", slug: "warp", company: "Warp" },
