@@ -1,5 +1,6 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
+import { dirname, join } from "node:path";
 
 export type HermesReasoning = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 
@@ -9,6 +10,38 @@ export type HermesCodexCommandOptions = {
   model: string;
   reasoning: HermesReasoning;
 };
+
+type HermesAgentDirResolutionOptions = {
+  configured?: string;
+  profileHome?: string;
+  accountHome?: string;
+  pathEntries?: string[];
+  exists?: (path: string) => boolean;
+};
+
+function isHermesRuntimeDir(candidate: string, exists: (path: string) => boolean): boolean {
+  return ["venv/bin/python", "run_agent.py", "hermes_cli/runtime_provider.py"].every((path) => exists(join(candidate, path)));
+}
+
+export function resolveHermesAgentDir({
+  configured = process.env.HERMES_AGENT_DIR,
+  profileHome = homedir(),
+  accountHome = userInfo().homedir,
+  pathEntries = (process.env.PATH ?? "").split(":").filter(Boolean),
+  exists = existsSync,
+}: HermesAgentDirResolutionOptions = {}): string {
+  const pathRuntimeDirs = pathEntries
+    .filter((entry) => entry.endsWith("/venv/bin"))
+    .map((entry) => dirname(dirname(entry)));
+  const candidates = [
+    configured,
+    ...pathRuntimeDirs,
+    join(profileHome, ".hermes", "hermes-agent"),
+    join(accountHome, ".hermes", "hermes-agent"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  return candidates.find((candidate) => isHermesRuntimeDir(candidate, exists)) ?? candidates[0];
+}
 
 export function buildHermesCodexCommand(options: HermesCodexCommandOptions): string[] {
   return [
@@ -25,7 +58,7 @@ export async function runHermesCodexPrompt(
   prompt: string,
   options: Partial<HermesCodexCommandOptions> = {},
 ): Promise<string> {
-  const agentDir = process.env.HERMES_AGENT_DIR ?? join(homedir(), ".hermes", "hermes-agent");
+  const agentDir = resolveHermesAgentDir();
   const resolved: HermesCodexCommandOptions = {
     bridgePath: options.bridgePath ?? process.env.VESPOID_HERMES_BRIDGE ?? join(import.meta.dir, "..", "hermes-codex-oauth.py"),
     pythonPath: options.pythonPath ?? process.env.HERMES_PYTHON ?? join(agentDir, "venv", "bin", "python"),

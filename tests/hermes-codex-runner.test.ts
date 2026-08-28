@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildHermesCodexCommand } from "../scripts/lib/hermes-codex";
+import { buildHermesCodexCommand, resolveHermesAgentDir } from "../scripts/lib/hermes-codex";
 import { parseJsonPayload } from "../scripts/curate-hn-llm";
 
 async function runFakeHermesBridge(result: Record<string, unknown>) {
@@ -40,6 +40,43 @@ async function runFakeHermesBridge(result: Record<string, unknown>) {
 }
 
 describe("Hermes Codex OAuth curation runner", () => {
+  test("falls back from a profile-sandboxed home to the real account Hermes runtime", () => {
+    const profileRuntime = "/home/tiger/.hermes/profiles/vespoid-manager/home/.hermes/hermes-agent";
+    const accountRuntime = "/home/tiger/.hermes/hermes-agent";
+    const runtimeFiles = (directory: string) => [
+      `${directory}/venv/bin/python`,
+      `${directory}/run_agent.py`,
+      `${directory}/hermes_cli/runtime_provider.py`,
+    ];
+
+    expect(
+      resolveHermesAgentDir({
+        profileHome: "/home/tiger/.hermes/profiles/vespoid-manager/home",
+        accountHome: "/home/tiger",
+        pathEntries: [],
+        exists: (path) => runtimeFiles(accountRuntime).includes(path),
+      }),
+    ).toBe(accountRuntime);
+    expect(
+      resolveHermesAgentDir({
+        profileHome: "/sandboxed/home",
+        accountHome: "/other/home",
+        pathEntries: ["/opt/hermes/venv/bin"],
+        exists: (path) => runtimeFiles("/opt/hermes").includes(path),
+      }),
+    ).toBe("/opt/hermes");
+    expect(
+      resolveHermesAgentDir({
+        configured: "/opt/explicit-hermes",
+        profileHome: "/ignored/profile",
+        accountHome: "/ignored/account",
+        pathEntries: [],
+        exists: (path) => runtimeFiles("/opt/explicit-hermes").includes(path),
+      }),
+    ).toBe("/opt/explicit-hermes");
+    expect(profileRuntime).not.toBe(accountRuntime);
+  });
+
   test("uses GPT-5.6 Luna with high reasoning and the Hermes OAuth runtime", () => {
     expect(
       buildHermesCodexCommand({
