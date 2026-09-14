@@ -60,4 +60,16 @@ describe("weekly homepage recommendations", () => {
     expect(recommendations[0].jobs.map((job) => job._id)).toEqual(["devtools", "generic"]);
     expect(recommendations[0].jobs[0].preferenceReasons).toContain("similar to saved/applied roles");
   });
+
+  test("keeps feedback from an application-linked job outside the candidate window while excluding every triaged candidate", () => {
+    const recommendations = selectWeeklyRecommendations([
+      { ...baseJob, _id: "candidate", title: "Developer Tools Engineer", fitScore: 10, location: "Remote US", remoteStatus: "remote" },
+      { ...baseJob, _id: "screening", title: "Developer Tools Engineer", fitScore: 99, location: "Remote US", remoteStatus: "remote" },
+    ], [
+      { status: "applied", job: { ...baseJob, _id: "older-applied", title: "Developer Tools Engineer", location: "Seattle, WA" } },
+    ], 5, ["older-applied", "screening"]);
+
+    expect(recommendations[0].jobs.map((job) => job._id)).toEqual(["candidate"]);
+    expect(recommendations[0].jobs[0].preferenceReasons).toContain("similar to saved/applied roles");
+  });
 });

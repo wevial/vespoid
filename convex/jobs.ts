@@ -10,6 +10,7 @@ import { matchesJobArea, type JobAreaFilter } from "../src/lib/job-area";
 import { requireVespoidAuthorization } from "../src/lib/vespoid-auth";
 import { scanFilteredActionPage } from "../src/lib/job-list-pagination";
 import { selectWeeklyRecommendations } from "../src/lib/weekly-recommendations";
+import { collectAllActionPages, type ActionPage } from "../src/lib/action-page-collection";
 
 const jobAreaValidator = v.union(
   v.literal("all"),
@@ -533,17 +534,72 @@ export const listSavedJobsNeedingAvailabilityCheck = query({
   },
 });
 
-export const listWeeklyRecommendations = query({
+const WEEKLY_RECOMMENDATION_PAGE_SIZE = 100;
+
+export const listWeeklyRecommendationApplicationsPage = internalQuery({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => await ctx.db.query("applications").paginate(args.paginationOpts),
+});
+
+export const listWeeklyRecommendationJobsByIds = internalQuery({
+  args: { jobIds: v.array(v.id("jobs")) },
+  handler: async (ctx, args) => {
+    const jobs = await Promise.all(args.jobIds.map((jobId) => ctx.db.get(jobId)));
+    return jobs.filter((job): job is Doc<"jobs"> => job !== null);
+  },
+});
+
+export const listWeeklyRecommendationCandidatesPage = internalQuery({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => await ctx.db.query("jobs").paginate(args.paginationOpts),
+});
+
+export const listWeeklyRecommendations = action({
+  args: {},
+  returns: v.any(),
   handler: async (ctx) => {
     await requireVespoidAuthorization(ctx);
-    const applications = await ctx.db.query("applications").take(8192);
-    const feedback: PreferenceFeedback<Doc<"jobs">>[] = [];
+
+    const applications = await collectAllActionPages<Doc<"applications">>(
+      async (cursor, numItems): Promise<ActionPage<Doc<"applications">>> => await ctx.runQuery(
+        internal.jobs.listWeeklyRecommendationApplicationsPage as any,
+        { paginationOpts: { cursor, numItems } },
+      ) as ActionPage<Doc<"applications">>,
+      WEEKLY_RECOMMENDATION_PAGE_SIZE,
+    );
+    const triagedJobIds = new Set<Id<"jobs">>();
+    const feedbackApplications: Doc<"applications">[] = [];
     for (const application of applications) {
-      const job = await ctx.db.get(application.jobId);
+      triagedJobIds.add(application.jobId);
+      if (application.status === "saved" || application.status === "applied" || application.status === "archived") {
+        feedbackApplications.push(application);
+      }
+    }
+
+    const feedbackJobsById = new Map<Id<"jobs">, Doc<"jobs">>();
+    const feedbackJobIds = [...new Set(feedbackApplications.map((application) => application.jobId))];
+    for (let offset = 0; offset < feedbackJobIds.length; offset += WEEKLY_RECOMMENDATION_PAGE_SIZE) {
+      const jobs: Doc<"jobs">[] = await ctx.runQuery(internal.jobs.listWeeklyRecommendationJobsByIds as any, {
+        jobIds: feedbackJobIds.slice(offset, offset + WEEKLY_RECOMMENDATION_PAGE_SIZE),
+      });
+      for (const job of jobs) feedbackJobsById.set(job._id, job);
+    }
+
+    const feedback: PreferenceFeedback<Doc<"jobs">>[] = [];
+    for (const application of feedbackApplications) {
+      const job = feedbackJobsById.get(application.jobId);
       if (job) feedback.push({ status: application.status as "saved" | "applied" | "archived", job });
     }
 
-    return selectWeeklyRecommendations(await ctx.db.query("jobs").take(2000), feedback)
+    const candidates: Doc<"jobs">[] = await collectAllActionPages<Doc<"jobs">>(
+      async (cursor, numItems): Promise<ActionPage<Doc<"jobs">>> => await ctx.runQuery(
+        internal.jobs.listWeeklyRecommendationCandidatesPage as any,
+        { paginationOpts: { cursor, numItems } },
+      ) as ActionPage<Doc<"jobs">>,
+      WEEKLY_RECOMMENDATION_PAGE_SIZE,
+    );
+
+    return selectWeeklyRecommendations(candidates, feedback, 5, triagedJobIds)
       .map((group) => ({ ...group, jobs: group.jobs.map((job) => jobCard(job)) }));
   },
 });

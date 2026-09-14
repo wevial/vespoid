@@ -27,10 +27,11 @@ export function selectWeeklyRecommendations<Job extends RecommendationJob>(
   jobs: readonly Job[],
   feedback: readonly PreferenceFeedback<Job>[],
   perArea = 5,
+  triagedJobIds: Iterable<string> = feedback.map((item) => item.job._id),
 ): RecommendationGroup<Job>[] {
-  const triagedJobIds = new Set(feedback.map((item) => item.job._id));
+  const triagedIds = new Set(triagedJobIds);
   const scoredJobs = applyPreferenceSignals(
-    jobs.filter((job) => job.isActive && !triagedJobIds.has(job._id)),
+    jobs.filter((job) => job.isActive && !triagedIds.has(job._id)),
     feedback,
   );
 

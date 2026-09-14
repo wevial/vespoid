@@ -29,7 +29,7 @@ export default function Dashboard() {
       const [nextCounts, nextJobs, nextRecommendations] = await Promise.all([
         convexHttp.query(api.jobs.statusCounts),
         convexHttp.query(api.jobs.listRecentJobCards, { limit: 10 }),
-        convexHttp.query(api.jobs.listWeeklyRecommendations),
+        convexHttp.action(api.jobs.listWeeklyRecommendations),
       ]);
       setCounts(nextCounts);
       setRecentJobs(nextJobs);
