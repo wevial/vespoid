@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   CURATED_COMPANY_BOARDS,
+  extractFactoryRoleLinks,
   extractNousResearchRoleLinks,
   extractPlaidRoleLinks,
+  mapFactoryCareerPage,
   mapGitHubCareerJob,
   mapPlaidCareerPage,
   mapNousResearchRolePage,
@@ -136,6 +138,34 @@ describe("curated company board list", () => {
       remoteStatus: "remote",
     });
     expect(mapped?.fitReasons).toContain("target stack");
+  });
+
+  test("discovers and maps Factory's direct careers roles as a company-board source", () => {
+    const careersHtml = `
+      <a href="/careers/software-engineer-frontend">Software Engineer, Frontend</a>
+      <a href="/careers/software-engineer-platform">Software Engineer, Platform</a>
+    `;
+    expect(extractFactoryRoleLinks(careersHtml)).toEqual([
+      "https://factory.ai/careers/software-engineer-frontend",
+      "https://factory.ai/careers/software-engineer-platform",
+    ]);
+
+    const mapped = mapFactoryCareerPage(
+      "https://factory.ai/careers/software-engineer-frontend",
+      `<html><head><title>Software Engineer, Frontend | Factory</title></head><body>
+        <h1>Software Engineer, Frontend</h1>
+        <p>San Francisco, CA · Full time</p>
+        <p>Factory raised a $150M Series C. Build AI software engineering products with TypeScript, React, and developer tools.</p>
+      </body></html>`,
+    );
+    expect(mapped).toMatchObject({
+      company: "Factory",
+      title: "Software Engineer, Frontend",
+      source: "company_board",
+      location: "San Francisco, CA",
+      remoteStatus: "onsite",
+    });
+    expect(mapped?.fitReasons).toContain("target role");
   });
 
   test("discovers and maps Plaid's direct careers roles as a company-board source", () => {

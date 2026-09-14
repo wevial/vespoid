@@ -43,7 +43,7 @@ describe("refresh completeness", () => {
       source: "company_board",
       complete: false,
       failedSources: ["github-careers"],
-      successfulScopes: ["ashby:example", "greptile-careers", "nousresearch-careers", "plaid-careers", "posthog-careers"],
+      successfulScopes: ["ashby:example", "factory-careers", "greptile-careers", "nousresearch-careers", "plaid-careers", "posthog-careers"],
       failedScopes: ["github-careers"],
     });
     expect(payload.jobs).toEqual([]);
@@ -58,7 +58,7 @@ describe("refresh completeness", () => {
       source: "company_board",
       complete: true,
       failedSources: [],
-      successfulScopes: ["ashby:empty-board", "github-careers", "greptile-careers", "nousresearch-careers", "plaid-careers", "posthog-careers"],
+      successfulScopes: ["ashby:empty-board", "factory-careers", "github-careers", "greptile-careers", "nousresearch-careers", "plaid-careers", "posthog-careers"],
       failedScopes: [],
       jobs: [],
     });
