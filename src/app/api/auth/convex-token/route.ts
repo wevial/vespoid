@@ -1,21 +1,18 @@
-import { headers } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { accessAssertionFromHeaders } from "@/lib/cloudflare-access";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
-const NO_STORE_HEADERS = {
-  "cache-control": "no-store, max-age=0",
-  "content-type": "application/json",
-};
+const NO_STORE_HEADERS = { "cache-control": "no-store, max-age=0" };
 
-export async function GET() {
-  const assertion = accessAssertionFromHeaders(await headers());
+export async function GET(request: NextRequest) {
+  const assertion = accessAssertionFromHeaders(request.headers);
   if (!assertion) {
-    return new Response(JSON.stringify({ error: "Cloudflare Access identity is required" }), {
-      status: 401,
-      headers: NO_STORE_HEADERS,
-    });
+    return NextResponse.json(
+      { error: "Cloudflare Access identity is required" },
+      { status: 401, headers: NO_STORE_HEADERS },
+    );
   }
 
-  return new Response(JSON.stringify({ token: assertion }), { headers: NO_STORE_HEADERS });
+  return NextResponse.json({ token: assertion }, { headers: NO_STORE_HEADERS });
 }
