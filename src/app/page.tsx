@@ -21,38 +21,45 @@ export default function Dashboard() {
   const [counts, setCounts] = useState<StatusCounts>();
   const [recentJobs, setRecentJobs] = useState<JobList>();
   const [weeklyRecommendations, setWeeklyRecommendations] = useState<WeeklyRecommendations>();
+  const [loadError, setLoadError] = useState<string>();
 
   const refresh = useCallback(async () => {
-    const [nextCounts, nextJobs, nextRecommendations] = await Promise.all([
-      convexHttp.query(api.jobs.statusCounts),
-      convexHttp.query(api.jobs.listRecentJobCards, { limit: 10 }),
-      convexHttp.query(api.jobs.listWeeklyRecommendations),
-    ]);
-    setCounts(nextCounts);
-    setRecentJobs(nextJobs);
-    setWeeklyRecommendations(nextRecommendations);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      convexHttp.query(api.jobs.statusCounts),
-      convexHttp.query(api.jobs.listRecentJobCards, { limit: 10 }),
-      convexHttp.query(api.jobs.listWeeklyRecommendations),
-    ]).then(([nextCounts, nextJobs, nextRecommendations]) => {
-      if (cancelled) return;
+    setLoadError(undefined);
+    try {
+      const [nextCounts, nextJobs, nextRecommendations] = await Promise.all([
+        convexHttp.query(api.jobs.statusCounts),
+        convexHttp.query(api.jobs.listRecentJobCards, { limit: 10 }),
+        convexHttp.query(api.jobs.listWeeklyRecommendations),
+      ]);
       setCounts(nextCounts);
       setRecentJobs(nextJobs);
       setWeeklyRecommendations(nextRecommendations);
-    });
-    return () => {
-      cancelled = true;
-    };
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Could not load the dashboard");
+    }
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   async function setStatus(jobId: Id<"jobs">, status: ApplicationStatus) {
     await convexHttp.mutation(api.applications.setStatus, { jobId, status });
     await refresh();
+  }
+
+  if (loadError) {
+    return (
+      <main className="mx-auto max-w-6xl p-8">
+        <div className="neon-panel rounded-[2px] p-6 text-blue-50">
+          <h1 className="text-xl font-semibold">Dashboard could not load</h1>
+          <p className="mt-2 text-sm text-blue-100/70">{loadError}</p>
+          <button className="neon-button mt-5 rounded-[2px] px-4 py-2 text-sm font-semibold" onClick={() => void refresh()}>
+            Retry
+          </button>
+        </div>
+      </main>
+    );
   }
 
   if (counts === undefined || recentJobs === undefined || weeklyRecommendations === undefined) {
