@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { statusValidator } from "./schema";
+import { requireVespoidAuthorization } from "../src/lib/vespoid-auth";
 
 export const setStatus = mutation({
   args: {
@@ -9,6 +10,7 @@ export const setStatus = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError(`Job ${args.jobId} not found`);
@@ -47,6 +49,7 @@ export const updateNotes = mutation({
     notes: v.string(),
   },
   handler: async (ctx, { jobId, notes }) => {
+    await requireVespoidAuthorization(ctx);
     const job = await ctx.db.get(jobId);
     if (!job) {
       throw new ConvexError(`Job ${jobId} not found`);

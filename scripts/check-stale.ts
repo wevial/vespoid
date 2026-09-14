@@ -1,6 +1,6 @@
 import { chromium, type Browser, type Page } from "@playwright/test";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
+import { createIngestionClient } from "./convex-ingestion-client";
 import type { Id } from "../convex/_generated/dataModel";
 
 const CONVEX_URL = process.env.CONVEX_URL;
@@ -9,7 +9,7 @@ if (!CONVEX_URL) {
   process.exit(1);
 }
 
-const client = new ConvexHttpClient(CONVEX_URL);
+const client = await createIngestionClient(CONVEX_URL);
 const CONCURRENCY = 5;
 
 async function checkHnStale(url: string): Promise<boolean> {

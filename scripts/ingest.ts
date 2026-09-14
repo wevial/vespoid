@@ -1,5 +1,5 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
+import { createIngestionClient } from "./convex-ingestion-client";
 import { isJobSource, type JobSource } from "../src/lib/job-sources";
 import { parseIngestOptions, selectStaleIds } from "../src/lib/ingest-options";
 
@@ -44,7 +44,7 @@ function isSafeHttpsUrl(value: unknown): value is string {
   }
 }
 
-const client = new ConvexHttpClient(CONVEX_URL);
+const client = await createIngestionClient(CONVEX_URL);
 const ingestOptions = parseIngestOptions(Bun.argv.slice(2));
 let input = "";
 process.stdin.on("data", (chunk) => (input += chunk));

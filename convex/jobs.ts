@@ -7,7 +7,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { sourceValidator, statusValidator, availabilityStatusValidator } from "./schema";
 import { applyPreferenceSignals, type PreferenceFeedback } from "./jobPreferenceScore";
 import { matchesJobArea, type JobAreaFilter } from "../src/lib/job-area";
+import { requireVespoidAuthorization } from "../src/lib/vespoid-auth";
 import { scanFilteredActionPage } from "../src/lib/job-list-pagination";
+import { selectWeeklyRecommendations } from "../src/lib/weekly-recommendations";
 
 const jobAreaValidator = v.union(
   v.literal("all"),
@@ -82,6 +84,7 @@ export const upsertJob = mutation({
     postedAt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     assertSafeUrl(args.url);
 
     const existing = await ctx.db
@@ -125,6 +128,7 @@ export const upsertJob = mutation({
 export const markStale = mutation({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
+    await requireVespoidAuthorization(ctx);
     await ctx.db.patch(jobId, { isActive: false, lastCheckedAt: new Date().toISOString() });
   },
 });
@@ -132,6 +136,7 @@ export const markStale = mutation({
 export const markStaleBatch = mutation({
   args: { jobIds: v.array(v.id("jobs")) },
   handler: async (ctx, { jobIds }) => {
+    await requireVespoidAuthorization(ctx);
     const now = new Date().toISOString();
     for (const jobId of jobIds) {
       await ctx.db.patch(jobId, { isActive: false, lastCheckedAt: now });
@@ -142,6 +147,7 @@ export const markStaleBatch = mutation({
 export const migrateJobDescriptions = mutation({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     const limit = Math.min(args.limit ?? 100, 250);
     const now = new Date().toISOString();
     const jobs = await ctx.db.query("jobs").take(8192);
@@ -186,6 +192,7 @@ export const listJobs = query({
     remoteStatus: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     const useSourceAndActive = args.source !== undefined && args.isActive !== undefined;
     const useSourceOnly = args.source !== undefined && args.isActive === undefined;
     const useActiveOnly = args.isActive !== undefined && args.source === undefined;
@@ -386,6 +393,7 @@ export const listJobCards = action({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args): Promise<JobCardsResult> => {
+    await requireVespoidAuthorization(ctx);
     const requestedItems = Math.min(args.paginationOpts.numItems, 25);
     const applicationsByJobId = new Map<Id<"jobs">, { status: Doc<"applications">["status"] }>();
     const feedback = await ctx.runQuery(internal.jobs.getJobListFeedback, {});
@@ -433,6 +441,7 @@ export const listJobCards = action({
 export const listRecentJobCards = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     const limit = Math.min(args.limit ?? 10, 25);
     const jobs = await ctx.db
       .query("jobs")
@@ -450,6 +459,7 @@ export const listRecentJobCards = query({
 export const getJobWithApplication = query({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
+    await requireVespoidAuthorization(ctx);
     const job = await ctx.db.get(jobId);
     if (!job) return null;
     const description = await getFullJobDescription(ctx, jobId);
@@ -463,6 +473,7 @@ export const getJobWithApplication = query({
 
 export const listActiveJobs = query({
   handler: async (ctx) => {
+    await requireVespoidAuthorization(ctx);
     return await ctx.db
       .query("jobs")
       .withIndex("by_active", (q) => q.eq("isActive", true))
@@ -479,6 +490,7 @@ export const markAvailability = mutation({
     availabilityReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     const job = await ctx.db.get(args.jobId);
     if (!job) {
       throw new ConvexError(`Job ${args.jobId} not found`);
@@ -498,6 +510,7 @@ export const listSavedJobsNeedingAvailabilityCheck = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireVespoidAuthorization(ctx);
     const maxAgeHours = args.maxAgeHours ?? 24 * 7;
     const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString();
     const limit = args.limit ?? 50;
@@ -520,8 +533,24 @@ export const listSavedJobsNeedingAvailabilityCheck = query({
   },
 });
 
+export const listWeeklyRecommendations = query({
+  handler: async (ctx) => {
+    await requireVespoidAuthorization(ctx);
+    const applications = await ctx.db.query("applications").take(8192);
+    const feedback: PreferenceFeedback<Doc<"jobs">>[] = [];
+    for (const application of applications) {
+      const job = await ctx.db.get(application.jobId);
+      if (job) feedback.push({ status: application.status as "saved" | "applied" | "archived", job });
+    }
+
+    return selectWeeklyRecommendations(await ctx.db.query("jobs").take(2000), feedback)
+      .map((group) => ({ ...group, jobs: group.jobs.map((job) => jobCard(job)) }));
+  },
+});
+
 export const statusCounts = query({
   handler: async (ctx) => {
+    await requireVespoidAuthorization(ctx);
     const apps = await ctx.db.query("applications").take(8192);
     const counts: Record<string, number> = {};
     for (const app of apps) {

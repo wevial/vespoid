@@ -1,5 +1,5 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
+import { createIngestionClient } from "./convex-ingestion-client";
 import type { Id } from "../convex/_generated/dataModel";
 import { checkJobAvailability } from "../src/lib/job-availability";
 
@@ -9,7 +9,7 @@ if (!CONVEX_URL) {
   process.exit(1);
 }
 
-const client = new ConvexHttpClient(CONVEX_URL);
+const client = await createIngestionClient(CONVEX_URL);
 const CONCURRENCY = 4;
 
 function parseArgs() {
