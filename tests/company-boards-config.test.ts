@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   CURATED_COMPANY_BOARDS,
   extractNousResearchRoleLinks,
+  extractPlaidRoleLinks,
   mapGitHubCareerJob,
+  mapPlaidCareerPage,
   mapNousResearchRolePage,
   mapPostHogCareerPage,
   mapWorkableMarkdownJob,
@@ -134,6 +136,32 @@ describe("curated company board list", () => {
       remoteStatus: "remote",
     });
     expect(mapped?.fitReasons).toContain("target stack");
+  });
+
+  test("discovers and maps Plaid's direct careers roles as a company-board source", () => {
+    const careersHtml = `
+      <a href="/careers/openings/engineering/seattle-office/senior-software-engineer-full-stack/">Senior Software Engineer, Full Stack</a>
+      <a href="/careers/openings/product/senior-product-manager/">Senior Product Manager</a>
+    `;
+    expect(extractPlaidRoleLinks(careersHtml)).toEqual([
+      "https://plaid.com/careers/openings/engineering/seattle-office/senior-software-engineer-full-stack/",
+      "https://plaid.com/careers/openings/product/senior-product-manager/",
+    ]);
+
+    const mapped = mapPlaidCareerPage(
+      "https://plaid.com/careers/openings/engineering/seattle-office/senior-software-engineer-full-stack/",
+      `<html><head><title>Senior Software Engineer, Full Stack | Seattle Office | Plaid</title></head><body>
+        <h1>Senior Software Engineer, Full Stack</h1><p>Seattle Office</p>
+        <p>Build product-facing financial APIs, TypeScript and React developer tools. $180,000 - $220,000</p>
+      </body></html>`,
+    );
+    expect(mapped).toMatchObject({
+      company: "Plaid",
+      title: "Senior Software Engineer, Full Stack",
+      source: "company_board",
+      location: "Seattle Office",
+    });
+    expect(mapped?.fitReasons).toContain("Seattle/WA preference");
   });
 
   test("parses Nous Research's own fully remote careers page instead of the unrelated Ashby nous board", () => {

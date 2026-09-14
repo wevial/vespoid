@@ -70,6 +70,7 @@ const POSTHOG_CAREER_URLS = [
 ];
 
 const GITHUB_CAREERS_API_URL = "https://www.github.careers/api/jobs?limit=100&page=1&internal=false";
+const PLAID_CAREERS_URL = "https://plaid.com/careers/";
 const NOUS_RESEARCH_CAREERS_URL = "https://nousresearch.com/careers";
 const NOUS_RESEARCH_ROLE_CARDS = [
   {
@@ -290,6 +291,59 @@ async function scrapePostHogCareers(): Promise<{ jobs: AtsJobListing[]; failedSo
     } else {
       console.warn(`Skipped posthog-careers:${POSTHOG_CAREER_URLS[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
       failedSources.push(`posthog-careers:${index}`);
+    }
+  });
+  return { jobs, failedSources };
+}
+
+export function extractPlaidRoleLinks(html: string): string[] {
+  const document = new JSDOM(html, { url: PLAID_CAREERS_URL }).window.document;
+  return [...new Set(
+    [...document.querySelectorAll<HTMLAnchorElement>("a[href]")]
+      .map((link) => link.href)
+      .filter((href) => /^https:\/\/plaid\.com\/careers\/openings\//i.test(href)),
+  )];
+}
+
+export function mapPlaidCareerPage(url: string, html: string): AtsJobListing | undefined {
+  const document = new JSDOM(html).window.document;
+  const text = normalizedText(document);
+  const title = document.querySelector("h1")?.textContent?.trim() ?? document.title.split("|")[0]?.trim();
+  const location = document.title.match(/\|\s*([^|]+?)\s*\|\s*Plaid\s*$/i)?.[1]?.trim();
+  if (!title || !location) return undefined;
+
+  const candidate = {
+    url,
+    title,
+    company: "Plaid",
+    source: "company_board" as const,
+    description: text,
+    location,
+    remoteStatus: /remote/i.test(location) ? "remote" : undefined,
+  };
+  const fit = classifyJobFit(candidate);
+  if (!fit.isRelevant) return undefined;
+  return { ...candidate, fitScore: fit.score, fitReasons: fit.reasons };
+}
+
+async function scrapePlaidCareers(): Promise<{ jobs: AtsJobListing[]; failedSources: string[] }> {
+  let roleLinks: string[];
+  try {
+    roleLinks = extractPlaidRoleLinks(await fetchText(PLAID_CAREERS_URL));
+  } catch (error) {
+    console.warn(`Skipped plaid-careers:index: ${error instanceof Error ? error.message : String(error)}`);
+    return { jobs: [], failedSources: ["plaid-careers:index"] };
+  }
+
+  const settled = await runLimited(roleLinks, 4, async (url) => mapPlaidCareerPage(url, await fetchText(url)));
+  const jobs: AtsJobListing[] = [];
+  const failedSources: string[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      if (result.value) jobs.push(result.value);
+    } else {
+      console.warn(`Skipped plaid-careers:${roleLinks[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+      failedSources.push(`plaid-careers:${index}`);
     }
   });
   return { jobs, failedSources };
@@ -523,9 +577,10 @@ export async function scrapeCompanyBoards(configs = CURATED_COMPANY_BOARDS): Pro
     scrapeGreptileCareers(),
     scrapePostHogCareers(),
     scrapeGitHubCareers(),
+    scrapePlaidCareers(),
     scrapeNousResearchCareers(),
   ]);
-  const customScopes = ["greptile-careers", "posthog-careers", "github-careers", "nousresearch-careers"];
+  const customScopes = ["greptile-careers", "posthog-careers", "github-careers", "plaid-careers", "nousresearch-careers"];
   customResults.forEach((result, index) => {
     const scope = customScopes[index];
     jobs.push(...withRefreshScope(result.jobs, scope));
