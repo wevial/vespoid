@@ -13,12 +13,22 @@ export async function createIngestionClient(convexUrl: string): Promise<ConvexHt
 
   const response = await fetch(ACCESS_TOKEN_URL, {
     cache: "no-store",
+    redirect: "manual",
     headers: {
       "CF-Access-Client-Id": clientId,
       "CF-Access-Client-Secret": clientSecret,
     },
   });
-  const payload = await response.json() as AccessTokenResponse;
+  const rawPayload = await response.text();
+  let payload: AccessTokenResponse;
+  try {
+    payload = JSON.parse(rawPayload) as AccessTokenResponse;
+  } catch {
+    throw new Error(
+      `Cloudflare Access service authentication failed (HTTP ${response.status}). `
+      + "Confirm the jobs.weevil.sh application has a Service Auth policy for vespoid-local-ingestion.",
+    );
+  }
   if (!response.ok || typeof payload.token !== "string" || payload.token.length === 0) {
     throw new Error("Cloudflare Access did not issue a service-token assertion for Vespoid ingestion");
   }
