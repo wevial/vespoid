@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Bee">
-  <rect width="100" height="100" rx="22" fill="#fff7cc"/>
-  <text x="50" y="70" text-anchor="middle" font-size="72">🐝</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Vespoid">
+  <rect width="48" height="48" rx="14" fill="#cbc1e8"/>
+  <g stroke="#543586" stroke-width="1.5" stroke-linecap="round">
+    <path d="M24 23C8 24 7 9 15 11c6 1 9 12 9 12Zm0 0c16 1 17-14 9-12-6 1-9 12-9 12Z" fill="#e0f8fa"/>
+    <ellipse cx="24" cy="29" rx="6" ry="10" fill="#d2efdf"/>
+    <path d="M19 27h10m-10 5h10m-8-13-3-5m9 5 3-5" fill="none"/>
+  </g>
 </svg>

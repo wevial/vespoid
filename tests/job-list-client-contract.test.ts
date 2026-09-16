@@ -21,7 +21,7 @@ test("salary renders in a dedicated job-list column rather than the role cell", 
   const roleCell = roleStart >= 0 && roleEnd > roleStart ? source.slice(roleStart, roleEnd) : undefined;
 
   expect(source).toContain('<span className="col-span-2">Salary</span>');
-  expect(source).toContain('<span className="text-orange-100/88 md:col-span-2"><span className="md:hidden text-blue-50/45">Salary: </span>{formatSalaryPreview(job.salaryRange)}</span>');
+  expect(source).toContain('<span className="text-berry md:col-span-2"><span className="md:hidden text-muted">Salary: </span>{formatSalaryPreview(job.salaryRange)}</span>');
   expect(roleCell).toBeDefined();
   expect(roleCell).not.toContain("formatSalaryPreview(job.salaryRange)");
 });

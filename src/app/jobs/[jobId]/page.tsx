@@ -76,11 +76,11 @@ export default function JobDetailPage() {
   }, [data, jobId, refresh]);
 
   if (data === undefined) {
-    return <main className="vespoid-shell mx-auto max-w-6xl p-8 text-blue-50/62">Loading listing…</main>;
+    return <main className="vespoid-shell mx-auto max-w-6xl p-8 text-muted">Loading listing…</main>;
   }
 
   if (data === null) {
-    return <main className="vespoid-shell mx-auto max-w-6xl p-8"><Link className="text-blue-300 hover:text-orange-200" href="/jobs">← Jobs</Link><p className="mt-6 text-blue-50/62">Job not found.</p></main>;
+    return <main className="vespoid-shell mx-auto max-w-6xl p-8"><Link className="text-berry hover:text-berry" href="/jobs">← Jobs</Link><p className="mt-6 text-muted">Job not found.</p></main>;
   }
 
   const { job, application } = data;
@@ -121,39 +121,39 @@ export default function JobDetailPage() {
 
   return (
     <main className="vespoid-shell mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
-      <Link className="text-sm text-blue-300 hover:text-orange-200" href="/jobs">← Back to jobs</Link>
+      <Link className="text-sm text-berry hover:text-berry" href="/jobs">← Back to jobs</Link>
       <section className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <article className="neon-panel neon-panel-hot rounded-[2px] p-6">
+        <article className="vespoid-panel vespoid-panel-featured rounded-2xl p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="neon-eyebrow text-sm uppercase tracking-[0.25em]">{job.source}</p>
-              <h1 className="neon-heading mt-2 text-3xl font-semibold">{job.title}</h1>
-              <p className="mt-2 text-lg text-blue-50/78">{job.company}</p>
+              <p className="vespoid-eyebrow text-sm uppercase tracking-[0.25em]">{job.source}</p>
+              <h1 className="vespoid-heading mt-2 text-3xl font-semibold">{job.title}</h1>
+              <p className="mt-2 text-lg text-muted">{job.company}</p>
             </div>
-            <a href={job.url} target="_blank" rel="noopener noreferrer" className="neon-button rounded-[2px] px-4 py-2 text-sm font-semibold">Open listing ↗</a>
+            <a href={job.url} target="_blank" rel="noopener noreferrer" className="vespoid-button rounded-xl px-4 py-2 text-sm font-semibold">Open listing ↗</a>
           </div>
 
-          <dl className="mt-6 grid gap-4 rounded-[2px] border border-blue-300/16 bg-black/24 p-4 md:grid-cols-3">
-            <div><dt className="text-xs text-blue-50/45">Location</dt><dd>{job.location ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-blue-50/45">Remote</dt><dd>{job.remoteStatus ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-blue-50/45">Salary</dt><dd>{job.salaryRange ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-blue-50/45">Fit score</dt><dd>{job.fitScore ?? "Unknown"}</dd></div>
-            <div><dt className="text-xs text-blue-50/45">Posted</dt><dd>{formatDate(job.postedAt)}</dd></div>
-            <div><dt className="text-xs text-blue-50/45">Discovered</dt><dd>{formatDate(job.discoveredAt)}</dd></div>
-            <div><dt className="text-xs text-blue-50/45">Availability</dt><dd className={job.availabilityStatus === "closed" ? "text-orange-200" : ""}>{availabilityLabel}</dd></div>
+          <dl className="mt-6 grid gap-4 rounded-xl border border-line bg-background p-4 md:grid-cols-3">
+            <div><dt className="text-xs text-muted">Location</dt><dd>{job.location ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-muted">Remote</dt><dd>{job.remoteStatus ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-muted">Salary</dt><dd>{job.salaryRange ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-muted">Fit score</dt><dd>{job.fitScore ?? "Unknown"}</dd></div>
+            <div><dt className="text-xs text-muted">Posted</dt><dd>{formatDate(job.postedAt)}</dd></div>
+            <div><dt className="text-xs text-muted">Discovered</dt><dd>{formatDate(job.discoveredAt)}</dd></div>
+            <div><dt className="text-xs text-muted">Availability</dt><dd className={job.availabilityStatus === "closed" ? "text-berry" : ""}>{availabilityLabel}</dd></div>
           </dl>
 
           {job.availabilityStatus === "closed" ? (
-            <div className="mt-4 rounded-[2px] border border-orange-300/30 bg-orange-500/10 p-4 text-sm text-orange-100">
+            <div className="mt-4 rounded-xl border border-line bg-lilac p-4 text-sm text-berry">
               This saved listing looks closed. Status is separate from your pipeline status, so it has not been archived automatically.
-              {job.availabilityReason ? <span className="mt-1 block text-orange-100/75">Reason: {job.availabilityReason}</span> : null}
+              {job.availabilityReason ? <span className="mt-1 block text-berry">Reason: {job.availabilityReason}</span> : null}
             </div>
           ) : null}
 
           {job.fitReasons && job.fitReasons.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {job.fitReasons.map((reason) => (
-                <span key={reason} className="rounded-[2px] border border-blue-300/24 bg-blue-500/10 px-3 py-1 text-xs text-blue-100">
+                <span key={reason} className="rounded-xl border border-line bg-background px-3 py-1 text-xs text-ink">
                   {reason}
                 </span>
               ))}
@@ -161,52 +161,52 @@ export default function JobDetailPage() {
           ) : null}
 
           {interviewProcess ? (
-            <details className="mt-6 rounded-[2px] border border-orange-300/18 bg-orange-500/8 p-5 text-sm text-blue-50/78">
-              <summary className="cursor-pointer select-none text-base font-semibold text-slate-50">
+            <details className="mt-6 rounded-xl border border-line bg-lilac p-5 text-sm text-muted">
+              <summary className="cursor-pointer select-none text-base font-semibold text-ink">
                 Interview process prep · {interviewProcess.company} · confidence: {interviewProcess.confidence}
               </summary>
-              <p className="mt-4 text-blue-50/72">{interviewProcess.summary}</p>
+              <p className="mt-4 text-muted">{interviewProcess.summary}</p>
               <div className="mt-5 grid gap-5 md:grid-cols-2">
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100/70">Likely stages</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Likely stages</h3>
                   <ul className="mt-3 list-disc space-y-2 pl-5">
                     {interviewProcess.stages.map((stage) => <li key={stage}>{stage}</li>)}
                   </ul>
                 </section>
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100/70">Prep focus</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Prep focus</h3>
                   <ul className="mt-3 list-disc space-y-2 pl-5">
                     {interviewProcess.prepTips.map((tip) => <li key={tip}>{tip}</li>)}
                   </ul>
                 </section>
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100/70">Technical signals</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Technical signals</h3>
                   <ul className="mt-3 list-disc space-y-2 pl-5">
                     {interviewProcess.technicalSignals.map((signal) => <li key={signal}>{signal}</li>)}
                   </ul>
                 </section>
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100/70">Sources</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Sources</h3>
                   <ul className="mt-3 space-y-2">
                     {interviewProcess.sources.map((source) => (
                       <li key={source.url}>
-                        <a className="text-blue-300 hover:text-orange-200" href={source.url} target="_blank" rel="noopener noreferrer">{source.label} ↗</a>
+                        <a className="text-berry hover:text-berry" href={source.url} target="_blank" rel="noopener noreferrer">{source.label} ↗</a>
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-4 text-xs text-blue-50/52">{interviewProcess.caveat}</p>
+                  <p className="mt-4 text-xs text-muted">{interviewProcess.caveat}</p>
                 </section>
               </div>
             </details>
           ) : null}
 
-          <div className="mt-6 rounded-[2px] border border-blue-300/16 bg-black/24 p-5 text-sm leading-6 text-blue-50/78">
+          <div className="mt-6 rounded-xl border border-line bg-background p-5 text-sm leading-6 text-muted">
             <div className="whitespace-pre-wrap">{displayedDescription}</div>
             {canExpandDescription ? (
               <button
                 type="button"
                 onClick={() => setShowFullDescription((current) => !current)}
-                className="mt-4 rounded-[2px] border border-blue-300/34 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-100 hover:border-orange-200/60 hover:text-orange-100"
+                className="mt-4 rounded-xl border border-line bg-background px-3 py-1 text-xs font-semibold text-ink hover:border-line hover:text-berry"
               >
                 {showFullDescription ? "See less" : "See more"}
               </button>
@@ -214,31 +214,31 @@ export default function JobDetailPage() {
           </div>
         </article>
 
-        <aside className="neon-panel flex flex-col gap-4 rounded-[2px] p-6">
+        <aside className="vespoid-panel flex flex-col gap-4 rounded-xl p-6">
           <div>
             <h2 className="text-lg font-semibold">Pipeline status</h2>
-            <p className="mt-1 text-sm text-blue-50/62">Current: {application ? STATUS_LABELS[application.status] : "Unread"}</p>
+            <p className="mt-1 text-sm text-muted">Current: {application ? STATUS_LABELS[application.status] : "Unread"}</p>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((status) => (
-              <button key={status} disabled={saving} onClick={() => changeStatus(status)} className="neon-ghost rounded-[2px] px-3 py-2 text-sm disabled:opacity-50">
+              <button key={status} disabled={saving} onClick={() => changeStatus(status)} className="vespoid-ghost rounded-xl px-3 py-2 text-sm disabled:opacity-50">
                 {STATUS_LABELS[status]}
               </button>
             ))}
           </div>
-          <label className="mt-2 text-sm font-medium text-blue-50/78" htmlFor="notes">Notes</label>
-          <textarea id="notes" value={notes} onChange={(e) => setDraftNotes(e.target.value)} className="neon-input min-h-40 rounded-[2px] p-3 text-sm outline-none" placeholder="Interview prep, follow-up notes, recruiter details…" />
-          <button disabled={saving} onClick={saveNotes} className="neon-button rounded-[2px] px-4 py-2 text-sm font-semibold disabled:opacity-50">{saving ? "Saving…" : "Save notes"}</button>
+          <label className="mt-2 text-sm font-medium text-muted" htmlFor="notes">Notes</label>
+          <textarea id="notes" value={notes} onChange={(e) => setDraftNotes(e.target.value)} className="vespoid-input min-h-40 rounded-xl p-3 text-sm outline-none" placeholder="Interview prep, follow-up notes, recruiter details…" />
+          <button disabled={saving} onClick={saveNotes} className="vespoid-button rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50">{saving ? "Saving…" : "Save notes"}</button>
         </aside>
       </section>
 
-      <section className="neon-panel rounded-[2px] p-4">
+      <section className="vespoid-panel rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">Preview</h2>
-          <a className="text-sm text-blue-300 hover:text-orange-200" href={job.url} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
+          <a className="text-sm text-berry hover:text-berry" href={job.url} target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
         </div>
-        <iframe src={job.url} title={job.title} sandbox="allow-scripts" className="h-[640px] w-full rounded-[2px] border border-blue-300/16 bg-white" />
-        <p className="mt-3 text-xs text-blue-50/45">Many job sites block iframe embedding. Use “Open in new tab” when the preview is blank.</p>
+        <iframe src={job.url} title={job.title} sandbox="allow-scripts" className="h-[640px] w-full rounded-xl border border-line bg-white" />
+        <p className="mt-3 text-xs text-muted">Many job sites block iframe embedding. Use “Open in new tab” when the preview is blank.</p>
       </section>
     </main>
   );

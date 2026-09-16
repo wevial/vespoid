@@ -14,13 +14,17 @@ describe("job quick triage actions", () => {
   });
 
   test("gives each quick action a prominent distinct color tone without glow", () => {
-    expect(getQuickActionButtonTone("saved", false)).toContain("bg-amber-400/18");
-    expect(getQuickActionButtonTone("applied", false)).toContain("bg-emerald-400/18");
-    expect(getQuickActionButtonTone("archived", false)).toContain("bg-rose-400/18");
-    expect(getQuickActionButtonTone("saved", true)).toContain("bg-amber-300/32");
+    expect(getQuickActionButtonTone("saved", false)).toContain("bg-amber-50");
+    expect(getQuickActionButtonTone("applied", false)).toContain("bg-emerald-50");
+    expect(getQuickActionButtonTone("archived", false)).toContain("bg-rose-50");
+    expect(getQuickActionButtonTone("saved", true)).toContain("bg-amber-100");
     expect(getQuickActionButtonTone("saved", false)).not.toContain("shadow");
     expect(getQuickActionButtonTone("applied", false)).not.toContain("shadow");
     expect(getQuickActionButtonTone("archived", false)).not.toContain("shadow");
     expect(getQuickActionButtonTone("saved", true)).not.toContain("shadow");
+    for (const action of QUICK_TRIAGE_ACTIONS) {
+      expect(getQuickActionButtonTone(action.status, false)).toMatch(/text-(amber|emerald|rose)-900/);
+      expect(getQuickActionButtonTone(action.status, true)).toContain("ring-1");
+    }
   });
 });
