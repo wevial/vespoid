@@ -325,10 +325,11 @@ export default function JobsPage() {
                     return (
                       <button
                         key={action.status}
+                        data-status={action.status}
                         type="button"
                         disabled={pendingQuickAction !== null}
                         onClick={() => setQuickStatus(job._id, action.status)}
-                        className={`rounded-xl border px-3 py-1 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-55 ${getQuickActionButtonTone(action.status, isActive)}`}
+                        className={`vespoid-status rounded-xl border px-3 py-1 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-55 ${getQuickActionButtonTone(action.status, isActive)}`}
                         aria-pressed={isActive}
                       >
                         {pendingQuickAction === pendingKey ? "Saving…" : action.label}
@@ -397,10 +398,11 @@ export default function JobsPage() {
                   return (
                     <button
                       key={action.status}
+                      data-status={action.status}
                       type="button"
                       disabled={pendingQuickAction !== null}
                       onClick={() => setQuickStatus(previewJob._id, action.status)}
-                      className={`rounded-xl border px-3 py-1 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-55 ${getQuickActionButtonTone(action.status, isActive)}`}
+                      className={`vespoid-status rounded-xl border px-3 py-1 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-55 ${getQuickActionButtonTone(action.status, isActive)}`}
                       aria-pressed={isActive}
                     >
                       {pendingQuickAction === pendingKey ? "Saving…" : action.label}
@@ -411,7 +413,7 @@ export default function JobsPage() {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
-              <dl className="grid gap-3 rounded-xl border border-line bg-background p-4 text-sm sm:grid-cols-2">
+              <dl className="vespoid-inset grid gap-3 rounded-xl border border-line p-4 text-sm sm:grid-cols-2">
                 <div><dt className="text-xs text-muted">Remote</dt><dd className="text-ink">{previewJob.remoteStatus ?? "Unknown"}</dd></div>
                 <div><dt className="text-xs text-muted">Salary</dt><dd className="text-ink">{previewJob.salaryRange ?? "Unknown"}</dd></div>
                 <div><dt className="text-xs text-muted">Fit score</dt><dd className="text-ink">{previewJob.fitScore ?? "Unknown"}</dd></div>
@@ -428,14 +430,14 @@ export default function JobsPage() {
               {previewJob.fitReasons && previewJob.fitReasons.length > 0 ? (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {previewJob.fitReasons.map((reason) => (
-                    <span key={reason} className="rounded-xl border border-line bg-background px-3 py-1 text-xs text-ink">
+                    <span key={reason} className="vespoid-tag rounded-xl border border-line px-3 py-1 text-xs text-ink">
                       {reason}
                     </span>
                   ))}
                 </div>
               ) : null}
 
-              <div className="mt-5 rounded-xl border border-line bg-background p-4 text-sm leading-6 text-muted">
+              <div className="vespoid-inset mt-5 rounded-xl border border-line p-4 text-sm leading-6 text-muted">
                 <div className="whitespace-pre-wrap">{previewDescription}</div>
                 {canExpandPreviewDescription ? (
                   <button

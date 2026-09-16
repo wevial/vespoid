@@ -122,18 +122,18 @@ export default function JobDetailPage() {
   return (
     <main className="vespoid-shell mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-10">
       <Link className="text-sm text-berry hover:text-berry" href="/jobs">← Back to jobs</Link>
-      <section className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <article className="vespoid-panel vespoid-panel-featured rounded-2xl p-6">
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <article className="vespoid-panel vespoid-panel-featured vespoid-detail rounded-2xl p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
+            <div className="min-w-0">
               <p className="vespoid-eyebrow text-sm uppercase tracking-[0.25em]">{job.source}</p>
               <h1 className="vespoid-heading mt-2 text-3xl font-semibold">{job.title}</h1>
               <p className="mt-2 text-lg text-muted">{job.company}</p>
             </div>
-            <a href={job.url} target="_blank" rel="noopener noreferrer" className="vespoid-button rounded-xl px-4 py-2 text-sm font-semibold">Open listing ↗</a>
+            <a href={job.url} target="_blank" rel="noopener noreferrer" className="vespoid-button vespoid-external-link rounded-xl px-4 py-2 text-sm font-semibold">Open listing ↗</a>
           </div>
 
-          <dl className="mt-6 grid gap-4 rounded-xl border border-line bg-background p-4 md:grid-cols-3">
+          <dl className="vespoid-inset mt-6 grid gap-4 rounded-xl border border-line p-4 md:grid-cols-3">
             <div><dt className="text-xs text-muted">Location</dt><dd>{job.location ?? "Unknown"}</dd></div>
             <div><dt className="text-xs text-muted">Remote</dt><dd>{job.remoteStatus ?? "Unknown"}</dd></div>
             <div><dt className="text-xs text-muted">Salary</dt><dd>{job.salaryRange ?? "Unknown"}</dd></div>
@@ -153,7 +153,7 @@ export default function JobDetailPage() {
           {job.fitReasons && job.fitReasons.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {job.fitReasons.map((reason) => (
-                <span key={reason} className="rounded-xl border border-line bg-background px-3 py-1 text-xs text-ink">
+                <span key={reason} className="vespoid-tag rounded-xl border border-line px-3 py-1 text-xs text-ink">
                   {reason}
                 </span>
               ))}
@@ -200,13 +200,13 @@ export default function JobDetailPage() {
             </details>
           ) : null}
 
-          <div className="mt-6 rounded-xl border border-line bg-background p-5 text-sm leading-6 text-muted">
+          <div className="vespoid-inset mt-6 rounded-xl border border-line p-5 text-sm leading-6 text-muted">
             <div className="whitespace-pre-wrap">{displayedDescription}</div>
             {canExpandDescription ? (
               <button
                 type="button"
                 onClick={() => setShowFullDescription((current) => !current)}
-                className="mt-4 rounded-xl border border-line bg-background px-3 py-1 text-xs font-semibold text-ink hover:border-line hover:text-berry"
+                className="vespoid-ghost mt-4 rounded-xl border border-line px-3 py-1 text-xs font-semibold text-ink hover:border-line hover:text-berry"
               >
                 {showFullDescription ? "See less" : "See more"}
               </button>
@@ -221,7 +221,7 @@ export default function JobDetailPage() {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(STATUS_LABELS) as ApplicationStatus[]).map((status) => (
-              <button key={status} disabled={saving} onClick={() => changeStatus(status)} className="vespoid-ghost rounded-xl px-3 py-2 text-sm disabled:opacity-50">
+              <button key={status} data-status={status} aria-pressed={application?.status === status} disabled={saving} onClick={() => changeStatus(status)} className="vespoid-ghost vespoid-status rounded-xl px-3 py-2 text-sm disabled:opacity-50">
                 {STATUS_LABELS[status]}
               </button>
             ))}

@@ -133,7 +133,8 @@ export default function Dashboard() {
                             <button
                               key={status}
                               onClick={() => setStatus(job._id as Id<"jobs">, status)}
-                              className="vespoid-ghost rounded-xl px-3 py-1 text-xs"
+                              data-status={status}
+                              className="vespoid-ghost vespoid-status rounded-xl px-3 py-1 text-xs"
                             >
                               {STATUS_LABELS[status]}
                             </button>
@@ -170,7 +171,9 @@ export default function Dashboard() {
                     <button
                       key={status}
                       onClick={() => setStatus(job._id as Id<"jobs">, status)}
-                      className="vespoid-ghost rounded-xl px-3 py-1 text-xs"
+                      data-status={status}
+                      aria-pressed={job.applicationStatus === status}
+                      className="vespoid-ghost vespoid-status rounded-xl px-3 py-1 text-xs"
                     >
                       {STATUS_LABELS[status]}
                     </button>

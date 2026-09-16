@@ -30,6 +30,18 @@ test("light theme preserves text and primary-action AA contrast", () => {
   expect(contrast(token("surface"), token("berry"))).toBeGreaterThanOrEqual(4.5);
 });
 
+test("semantic status and inset surfaces remain distinct and readable", () => {
+  const statuses = ["saved", "applied", "screen", "interview", "offer", "rejected", "archived"];
+  const colors = statuses.map((status) => token(`status-${status}`));
+  expect(new Set(colors).size).toBe(statuses.length);
+  for (const surface of [...colors, token("inset-surface"), token("tag-surface")]) {
+    expect(surface).not.toBe(token("background"));
+    expect(surface).not.toBe(token("surface"));
+    expect(contrast(token("foreground"), surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token("muted"), surface)).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test("warm page and reference mauve navigation retain accessible branding", () => {
   expect(token("background")).toBe("#f8eadf");
   expect(token("nav-mauve")).toBe("#a382a9");

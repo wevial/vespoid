@@ -16,6 +16,15 @@
   --line: #8773a6;
   --mint: #d2efdf;
   --peach: #f7dfcb;
+  --inset-surface: #e8e7f5;
+  --tag-surface: #d4c5eb;
+  --status-saved: #f3e3af;
+  --status-applied: #cce9d9;
+  --status-screen: #cee3f5;
+  --status-interview: #dfd0f0;
+  --status-offer: #dcebbd;
+  --status-rejected: #f0ccd5;
+  --status-archived: #dcdce6;
   --raised: inset 1px 1px 0 #ffffffcc, inset -1px -1px 0 #68508966, 1px 2px 0 #715b92;
   --inset: inset 1px 1px 3px #705d8c66, inset -1px -1px 0 #ffffff;
   --panel-inset: inset 1px 1px 0 #705d8c33, inset -1px -1px 0 #ffffff66;
@@ -124,6 +133,34 @@
   .vespoid-preview { background: var(--surface); box-shadow: var(--panel-inset); }
   .vespoid-preview > div > .border-b { background: var(--lilac); }
 }
+
+/* Keep semantic tones above utility layers, including legacy triage utilities.
+   All surfaces share one palette across dashboard, listing and detail controls. */
+.vespoid-shell .vespoid-status {
+  background: var(--status-tone);
+  color: var(--foreground);
+  border: 1px solid var(--line);
+}
+.vespoid-status[data-status="saved"] { --status-tone: var(--status-saved); }
+.vespoid-status[data-status="applied"] { --status-tone: var(--status-applied); }
+.vespoid-status[data-status="screen"] { --status-tone: var(--status-screen); }
+.vespoid-status[data-status="interview"] { --status-tone: var(--status-interview); }
+.vespoid-status[data-status="offer"] { --status-tone: var(--status-offer); }
+.vespoid-status[data-status="rejected"] { --status-tone: var(--status-rejected); }
+.vespoid-status[data-status="archived"] { --status-tone: var(--status-archived); }
+.vespoid-shell .vespoid-status:not(:disabled):hover { filter: brightness(.96); }
+.vespoid-shell .vespoid-status[aria-pressed="true"] {
+  box-shadow: var(--inset);
+  outline: 2px solid var(--berry);
+  outline-offset: 1px;
+  font-weight: 700;
+}
+.vespoid-shell .vespoid-status[aria-pressed="true"]::before { content: "✓"; margin-right: .35em; }
+.vespoid-shell .vespoid-status:focus-visible { outline: 3px solid var(--berry); outline-offset: 4px; }
+.vespoid-inset { background: var(--inset-surface); box-shadow: var(--panel-inset); }
+.vespoid-tag { background: var(--tag-surface); color: var(--foreground); }
+.vespoid-external-link { white-space: nowrap; flex-shrink: 0; align-self: flex-start; }
+.vespoid-detail { min-width: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 639px) {
   .vespoid-nav { margin: .65rem .75rem 0; padding: .65rem .75rem; gap: .5rem; }
