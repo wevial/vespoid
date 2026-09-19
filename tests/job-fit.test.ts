@@ -279,6 +279,44 @@ describe("target job fit", () => {
     expect(embeddedInPeopleOrg.rejectionReasons).not.toContain("embedded/hardware specialist role");
   });
 
+  test("keeps Linear software workflows embedded deeply in the product", () => {
+    const fit = classifyJobFit({
+      title: "Product Engineer",
+      company: "Linear",
+      location: "Remote US",
+      description: "transform foundation models into structured, reliable workflows embedded deeply in the core of Linear.",
+    });
+
+    expect(fit.rejectionReasons).not.toContain("embedded/hardware specialist role");
+    expect(fit.isRelevant).toBe(true);
+  });
+
+  test("keeps software workflows embedded in a product", () => {
+    const fit = classifyJobFit({
+      title: "Product Engineer",
+      company: "SoftwareCo",
+      location: "Remote US",
+      description: "Build AI workflows embedded in a React product.",
+    });
+
+    expect(fit.rejectionReasons).not.toContain("embedded/hardware specialist role");
+    expect(fit.isRelevant).toBe(true);
+  });
+
+  test("still rejects hardware specialists alongside embedded deeply software wording", () => {
+    for (const specialty of ["embedded systems", "firmware", "hardware-in-the-loop"]) {
+      const fit = classifyJobFit({
+        title: "Software Engineer",
+        company: "DeviceCo",
+        location: "Remote US",
+        description: `Build AI workflows embedded deeply in a React product. Own ${specialty} development.`,
+      });
+
+      expect(fit.rejectionReasons).toContain("embedded/hardware specialist role");
+      expect(fit.isRelevant).toBe(false);
+    }
+  });
+
   test("rejects grouped company posts that mix target engineering roles with non-target roles", () => {
     const fit = classifyJobFit({
       title: "Data Engineer, Full Stack Engineers (Sr & Staff/Lead), Sr. Product Manager",
