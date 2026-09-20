@@ -1,3 +1,5 @@
+import { BACKEND_DIRECTION_TITLE, systemsDomainPenalty } from "./jobDomainFit";
+
 type PreferenceStatus = "saved" | "applied" | "archived";
 
 export type PreferenceScorableJob = {
@@ -61,28 +63,18 @@ function tokenOverlap(a: Set<string>, b: Set<string>) {
 }
 
 const EMBEDDED_HARDWARE_DOMAIN = /\b(embedded|firmware|kernel|device driver|connectivity|bluetooth|ble\b|wi[-\s]?fi|wireless|consumer devices?|hardware[-\s]?in[-\s]?the[-\s]?loop|flight software|rf software|avionics|power systems controls?|control systems?|hardware accelerators?|accelerator platforms?)\b/i;
-const INFRA_BACKEND_TITLE = /\b(backend|back[-\s]?end|infrastructure|platform|kubernetes|devops|site reliability|sre|security|inference|database|data platform|storage|network|networking|connectivity|cdn|edge infrastructure|edge networking|content delivery)\b/i;
-const PRODUCT_FACING_WORK = /\b(product engineer|product[-\s]?minded|full[-\s]?stack|frontend|front[-\s]?end|web app|user[-\s]?facing|customer[-\s]?facing|product surface|growth|gtm|internal tools|workflow|developer experience|devtools?|sdk|api product)\b/i;
-const DOMAIN_HEAVY_SYSTEMS_PATTERNS = [
-  /\bdistributed systems?\b/i,
-  /\b(kubernetes|k8s|terraform|devops|site reliability|sre|on[-\s]?call|incident response)\b/i,
-  /\b(infrastructure|platform engineering|cloud infrastructure|fleet|orchestration|autoscaling)\b/i,
-  /\b(cdn|content delivery|edge infrastructure|edge networking|edge caching|traffic routing|global traffic|internet traffic|packet|packets)\b/i,
-  /\b(high[-\s]?qps|p9[59]|tail latency|low latency|high performance computing|multi[-\s]?region|load balancing|request routing|traffic management)\b/i,
-  /\b(databases?|storage backends?|caching|cdc|consistency|failover|indexing|retrieval)\b/i,
-  /\b(inference infrastructure|model serving|accelerators?|gpu|tpu|hardware[-\s]?agnostic)\b/i,
-  /\b(microservices?|backend systems?|data[-\s]?intensive)\b/i,
-];
 
 function domainMismatchPenalty(job: PreferenceScorableJob) {
   const text = [job.title, job.company, job.location, job.remoteStatus, job.fitReasons?.join(" "), job.description].filter(Boolean).join(" ");
   if (EMBEDDED_HARDWARE_DOMAIN.test(text)) return { penalty: 8, reason: "embedded/hardware specialist domain" };
-  const systemsBurden = DOMAIN_HEAVY_SYSTEMS_PATTERNS.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
-  const productFacing = PRODUCT_FACING_WORK.test(text);
-  if ((INFRA_BACKEND_TITLE.test(job.title) && systemsBurden >= 2) || (systemsBurden >= 4 && !productFacing)) {
+  const domainPenalty = systemsDomainPenalty(job.title, job.description);
+  if (domainPenalty === 6) {
     return { penalty: 6, reason: "backend/infrastructure specialist domain" };
   }
-  if (systemsBurden >= 3) return { penalty: 3, reason: "backend/infrastructure-heavy domain" };
+  if (domainPenalty === 3) return { penalty: 3, reason: "backend/infrastructure-heavy domain" };
+  if (BACKEND_DIRECTION_TITLE.test(job.title)) {
+    return { penalty: 2, reason: "backend title: career-direction preference (not capability)" };
+  }
   return { penalty: 0, reason: undefined };
 }
 

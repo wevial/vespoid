@@ -1,3 +1,5 @@
+import { systemsDomainPenalty } from "../../convex/jobDomainFit";
+
 export interface JobFitInput {
   title: string;
   company: string;
@@ -53,18 +55,7 @@ const NON_JOB = /\b(not hiring|no longer hiring|actively helping|seeking freelan
 const NON_TARGET_ROLE = /\b(marketer|marketing|sales|account executive|customer success|support engineer|design engineer|designer|product manager|data scientist|machine learning researcher|security analyst|recruiter|intern\b|internship|student)\b/i;
 const MOBILE_PLATFORM_ROLE = /\b(ios|android|mobile|react native|swift|kotlin)\b/i;
 const EMBEDDED_HARDWARE_ROLE = /\b(embedded(?!\s+(?:deeply\s+)?in\b)|firmware|kernel|device driver|connectivity|bluetooth|ble\b|wi[-\s]?fi|wireless|consumer devices?|hardware[-\s]?in[-\s]?the[-\s]?loop|flight software|rf software|avionics|power systems controls?|control systems?|hardware accelerators?|accelerator platforms?)\b/i;
-const INFRA_BACKEND_TITLE = /\b(backend|back[-\s]?end|infrastructure|platform|kubernetes|devops|site reliability|sre|security|inference|database|data platform|storage|network|networking|connectivity|cdn|edge infrastructure|edge networking|content delivery)\b/i;
 const PRODUCT_FACING_WORK = /\b(product engineer|product[-\s]?minded|full[-\s]?stack|frontend|front[-\s]?end|web app|user[-\s]?facing|customer[-\s]?facing|product surface|growth|gtm|internal tools|workflow|developer experience|devtools?|sdk|api product)\b/i;
-const DOMAIN_HEAVY_SYSTEMS_PATTERNS = [
-  /\bdistributed systems?\b/i,
-  /\b(kubernetes|k8s|terraform|devops|site reliability|sre|on[-\s]?call|incident response)\b/i,
-  /\b(infrastructure|platform engineering|cloud infrastructure|fleet|orchestration|autoscaling)\b/i,
-  /\b(cdn|content delivery|edge infrastructure|edge networking|edge caching|traffic routing|global traffic|internet traffic|packet|packets)\b/i,
-  /\b(high[-\s]?qps|p9[59]|tail latency|low latency|high performance computing|multi[-\s]?region|load balancing|request routing|traffic management)\b/i,
-  /\b(databases?|storage backends?|caching|cdc|consistency|failover|indexing|retrieval)\b/i,
-  /\b(inference infrastructure|model serving|accelerators?|gpu|tpu|hardware[-\s]?agnostic)\b/i,
-  /\b(microservices?|backend systems?|data[-\s]?intensive)\b/i,
-];
 const GROUPED_COMPANY_POST = /\b(multiple roles?|engineering roles?|software engineers|senior\s*\+\s*staff engineers?|engineers? \([^)]*,|various roles?)\b/i;
 const MIXED_ROLE_SEPARATOR = /[,/]|\band\b/i;
 const STAFFING_COMPANY = /\b(robert half|teksystems|kforce|randstad|staffing|recruiting|aquent)\b/i;
@@ -125,10 +116,6 @@ function hasWashingtonPreference(job: JobFitInput): boolean {
   return WASHINGTON_PREFERRED.test([job.location, job.remoteStatus].filter(Boolean).join(" "));
 }
 
-function systemsDomainBurden(text: string): number {
-  return DOMAIN_HEAVY_SYSTEMS_PATTERNS.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
-}
-
 function explicitExperienceYears(text: string): number | undefined {
   const values: number[] = [];
   for (const match of text.matchAll(/\b(\d{2})\+?\s*(?:years|yrs)\b/gi)) {
@@ -178,7 +165,7 @@ export function classifyJobFit(job: JobFitInput): JobFit {
   } else if (TARGET_STACK.test(job.title) && /\bengineer|developer|programmer\b/i.test(job.title)) {
     score += 2;
     reasons.push("engineering role with target stack");
-  } else if (/\b(software|backend|platform|infrastructure) engineer\b/i.test(job.title) && TARGET_STACK.test(text)) {
+  } else if (/\b(software|back[-\s]?end|platform|infrastructure) engineer\b/i.test(job.title) && TARGET_STACK.test(text)) {
     score += 2;
     reasons.push("engineering role with target stack");
   } else {
@@ -200,12 +187,12 @@ export function classifyJobFit(job: JobFitInput): JobFit {
     rejectionReasons.push("embedded/hardware specialist role");
   }
 
-  const systemsBurden = systemsDomainBurden(text);
   const productFacing = PRODUCT_FACING_WORK.test([job.title, job.description].filter(Boolean).join(" "));
-  if ((INFRA_BACKEND_TITLE.test(job.title) && systemsBurden >= 2) || (systemsBurden >= 4 && !productFacing)) {
+  const domainPenalty = systemsDomainPenalty(job.title, job.description);
+  if (domainPenalty === 6) {
     score -= 6;
     rejectionReasons.push("backend/infrastructure specialist role");
-  } else if (systemsBurden >= 3) {
+  } else if (domainPenalty === 3) {
     score -= 3;
     reasons.push("backend/infrastructure-heavy role");
   }
