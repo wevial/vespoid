@@ -163,7 +163,7 @@
 .vespoid-detail { min-width: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 639px) {
-  .vespoid-nav { margin: .65rem .75rem 0; padding: .65rem .75rem; gap: .5rem; }
+  .vespoid-nav { margin: .65rem .75rem 0; padding: .65rem .75rem; gap: .5rem; flex-wrap: wrap; }
   .vespoid-wordmark { font-size: 1.2rem; }
   .vespoid-brand { gap: .35rem; }
   .vespoid-brand svg { width: 1.8rem; height: 1.8rem; }

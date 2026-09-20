@@ -18,6 +18,7 @@ export function Navigation() {
       <div className="vespoid-nav-links">
         <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>Dashboard</Link>
         <Link href="/jobs" aria-current={pathname.startsWith("/jobs") ? "page" : undefined}>Jobs</Link>
+        <Link href="/review" aria-current={pathname === "/review" ? "page" : undefined}>Review</Link>
       </div>
     </nav>
   );
