@@ -6,7 +6,7 @@ const headers={'CF-Access-Client-Id':process.env.VESPOID_CF_ACCESS_CLIENT_ID!,'C
 const broker=await fetch('https://jobs.weevil.sh/api/auth/convex-token',{headers,redirect:'manual'});assert.equal(broker.status,200);const {token}=await broker.json();
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_EXECUTABLE_PATH,args:['--no-sandbox']});
 const context=await browser.newContext({viewport:{width:1440,height:1000},extraHTTPHeaders:live?headers:{'cf-access-jwt-assertion':token},acceptDownloads:true});
-let writes=0;await context.route('**/*',route=>{if(route.request().method()!=='GET'&&route.request().method()!=='HEAD'){writes++;return route.abort();}return route.continue();});
+let writes=0,blockedTelemetry=0;await context.route('**/*',route=>{if(route.request().method()!=='GET'&&route.request().method()!=='HEAD'){if(new URL(route.request().url()).pathname==='/cdn-cgi/rum')blockedTelemetry++;else writes++;return route.abort();}return route.continue();});
 const page=await context.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
 const progress=async(n:number)=>{await page.getByText(`${n} / 84 reviewed`,{exact:true}).waitFor();};
 try{
@@ -26,5 +26,5 @@ try{
  for(const width of [1440,320]){await page.setViewportSize({width,height:1000});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`${process.env.REVIEW_EVIDENCE_DIR||process.env.TMPDIR}/vespoid-review-${live?'live':'local'}-${width}.png`,fullPage:true});}
  await page.evaluate(()=>localStorage.clear());await context.close();
  const failure=await browser.newContext({extraHTTPHeaders:live?headers:{'cf-access-jwt-assertion':token}});await failure.route('**/*',route=>route.request().method()==='GET'?route.continue():route.abort());await failure.addInitScript(()=>{Storage.prototype.setItem=function(){throw new DOMException('QA quota','QuotaExceededError');};});const fp=await failure.newPage();await fp.goto(base+'/review');await fp.getByText('0 / 84 reviewed',{exact:true}).waitFor();await fp.getByText('Memory-only — export before leaving.').waitFor();await fp.keyboard.press('ArrowDown');await fp.getByText('1 / 84 reviewed',{exact:true}).waitFor();let confirm=false;fp.on('dialog',async d=>{confirm=true;await d.dismiss();});await fp.getByRole('link',{name:'Dashboard',exact:true}).click();assert(confirm);assert.equal(new URL(fp.url()).pathname,'/review');await failure.close();
- assert.equal(writes,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({base,count:84,fingerprint:dataset.sample_fingerprint,keyboardSkipUndoReloadExportImportCompletion:true,repeatEditableGuards:true,storageFailureNavigationGuard:true,widths:[1440,320],appWrites:writes,errors},null,2));
+ assert.equal(writes,0);assert.deepEqual(errors,[]);console.log(JSON.stringify({base,count:84,fingerprint:dataset.sample_fingerprint,keyboardSkipUndoReloadExportImportCompletion:true,repeatEditableGuards:true,storageFailureNavigationGuard:true,widths:[1440,320],appWrites:writes,blockedTelemetry,errors},null,2));
 }finally{await browser.close();}
